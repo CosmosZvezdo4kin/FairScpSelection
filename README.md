@@ -2,9 +2,9 @@
 LabAPI plugin that reworks SCP selection system
 ___
 # Installation
-Put plugin dll from [releases](./releases/latest) in `LabAPI/plugins/...`
+Put plugin dll from [releases](../releases/latest) in `LabAPI/plugins/...`
 
-Put `0Harmony.dll` from [releases](./releases/latest) in `LabAPI/dependencies/...`
+Put `0Harmony.dll` from [releases](../releases/latest) in `LabAPI/dependencies/...`
 ___
 # Config
 
@@ -23,7 +23,7 @@ Config file is located at `LabAPI/configs/.../FairScpSelection/config.yml`
 | spawn_restrictions   |             | [See Here](#spawn-restrictions)                                                                  |
 | role_limitations     |             | Scp049: 1<br/>Scp079: 1<br/>Scp096: 1<br/>Scp106: 1<br/>Scp173: 1<br/>Scp939: 1<br/>Scp3114: 1   |
 
-## LobbyInterface
+## Lobby Interface
 
 | Name                             | Description | Default value |
 |----------------------------------|-------------|---------------|
