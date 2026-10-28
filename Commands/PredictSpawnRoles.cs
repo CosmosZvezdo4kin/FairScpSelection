@@ -53,7 +53,7 @@ public class PredictSpawnRoles : ICommand, IUsageProvider
 
         var predictedSpawnResult = string.Empty;
         
-        foreach (var kvp in predictedSpawnRoles.Where(x => x.Value.IsAlive() && !x.Key.IsDestroyed && x.Key.IsReady && !x.Key.IsHost && (x.Key.IsPlayer || Core.Singleton.Config.Dummy)))
+        foreach (var kvp in predictedSpawnRoles.Where(x => x.Value.IsAlive() && !x.Key.IsDestroyed && x.Key.IsReady && !x.Key.IsHost && (x.Key.IsPlayer || Core.Singleton.Config.DummyMode)))
         {
             var player = kvp.Key;
             var roleType = kvp.Value;

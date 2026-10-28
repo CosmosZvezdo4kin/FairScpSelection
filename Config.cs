@@ -7,9 +7,10 @@ namespace FairScpSelection;
 
 public class Config
 {
-    [Description("Read config docs at https://github.com/CosmosZvezdo4kin/FairScpSelection")]
+    [Description("Read config docs at https://github.com/CosmosZvezdo4kin/FairScpSelectio")]
     public bool Debug { get; set; } = false;
-    public bool Dummy { get; set; } = false;
+    public bool DummyMode { get; set; } = false;
+    public bool IncludeDummyInCalculations { get; set; } = false;
     public int TicketsPerRound { get; set; } = 2;
     public int MinTickets { get; set; } = 10;
     public int MaxTickets { get; set; } = 32;

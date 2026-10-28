@@ -47,7 +47,7 @@ public class SpawnPreference : ICommand, IUsageProvider
             return false;
         }
 
-        if (!Player.TryGet(playerId, out var player) || player.IsDestroyed || !player.IsReady || player.IsHost || (!player.IsPlayer && !Core.Singleton.Config.Dummy))
+        if (!Player.TryGet(playerId, out var player) || player.IsDestroyed || !player.IsReady || player.IsHost || (!player.IsPlayer && !Core.Singleton.Config.DummyMode))
         {
             response = $"Player with this PlayerId was not found - {stringPlayerId}\n" + this.DisplayCommandUsage();
             return false;
@@ -62,7 +62,7 @@ public class SpawnPreference : ICommand, IUsageProvider
             return false;
         }
 
-        if (arguments.Count < 2)
+        if (arguments.Count < 3)
         {
             var preferencesList = spawnPreferences.Preferences.Select(p => $"{p.Key}: {p.Value + 5}");
             

@@ -118,18 +118,18 @@ public class Core : Plugin
         
         var minTickets = Mathf.Clamp(Config.MinTickets, 0, int.MaxValue);
         
-        var predicatedRoles = new Dictionary<Player, RoleTypeId>();
+        var predictedRoles = new Dictionary<Player, RoleTypeId>();
         var playerTickets = new Dictionary<Player, int>();
         
         var roleLimitations = new Dictionary<RoleTypeId, int>(RoleLimitations);
         
         spawnReason = new Dictionary<Player, string>();
         
-        foreach (var player in Player.List.Where(x => !x.IsDestroyed && x.IsReady && !x.IsHost && (x.IsPlayer || Config.Dummy)))
+        foreach (var player in Player.List.Where(x => !x.IsDestroyed && x.IsReady && !x.IsHost && (x.IsPlayer || Config.DummyMode)))
         {
-            if (!RoleAssigner.CheckPlayer(player.ReferenceHub))
+            if (!RoleAssigner.CheckPlayer(player.ReferenceHub) || !ScpSpawnPreferences.Preferences.ContainsKey(player.Connection.connectionId))
             {
-                predicatedRoles[player] = RoleTypeId.Spectator;
+                predictedRoles[player] = RoleTypeId.Destroyed;
                 spawnReason[player] = Translation.UnavailableRoleSpawnReason;
                 continue;
             }
@@ -143,7 +143,7 @@ public class Core : Plugin
         }
 
         if (!playerTickets.Any())
-            return predicatedRoles;
+            return predictedRoles;
 
         var iteration = 0;
         var targetsCount = 0;
@@ -157,7 +157,7 @@ public class Core : Plugin
                 if (targetsCount >= targetRolesNumber)
                     break;
                 
-                if (predicatedRoles.ContainsKey(player))
+                if (predictedRoles.ContainsKey(player))
                     continue;
 
                 if (!ScpSpawnPreferences.Preferences.TryGetValue(player.Connection.connectionId, out var spawnPreferences))
@@ -185,7 +185,7 @@ public class Core : Plugin
                     var roleType = kvp.Key;
                     var preferenceValue = kvp.Value;
                     
-                    if (!CanQueueRole(roleType, predicatedRoles, targetRolesNumber))
+                    if (!CanQueueRole(roleType, predictedRoles, targetRolesNumber))
                         continue;
                 
                     if (!roleLimitations.TryGetValue(roleType, out var limitNumber) || limitNumber <= 0)
@@ -197,7 +197,7 @@ public class Core : Plugin
                     roleLimitations[roleType] -= 1;
                     targetsCount++;
                 
-                    predicatedRoles[player] = roleType;
+                    predictedRoles[player] = roleType;
                     spawnReason[player] = iteration == 0 ? string.Format(Translation.HighPreferenceSpawnReason, preferenceValue) : string.Format(Translation.NotEnoughPlayersSpawnReason, preferenceValue);
                 
                     break;
@@ -207,7 +207,7 @@ public class Core : Plugin
             iteration++;
         }
 
-        return predicatedRoles;
+        return predictedRoles;
     }
 
     private bool CanSpawn(RoleTypeId roleTypeId)
@@ -257,7 +257,7 @@ public class Core : Plugin
         if (TicketLoader.TicketsEntries.TryGetValue(player.UserId, out var ticketsEntry))
             tickets = ticketsEntry.Tickets.ToString();
         
-        var predictedRole = _predictedRoles.TryGetValue(player, out var role) ? role : RoleTypeId.None;
+        var predictedRole = _predictedRoles.TryGetValue(player, out var role) ? role : RoleTypeId.Destroyed;
         
         var bufferTeammates = new Dictionary<RoleTypeId, int>();
         
@@ -268,7 +268,7 @@ public class Core : Plugin
                               Config.LobbyInterface.ShowTeamTeammatesWhitelist.Contains(predictedRole.GetTeam()) ||
                               Config.LobbyInterface.ShowFactionTeammatesWhitelist.Contains(predictedRole.GetFaction());
         
-        if (!predictedRole.IsAlive() && predictedRole != RoleTypeId.None)
+        if (!predictedRole.IsAlive() && predictedRole != RoleTypeId.Destroyed)
         {
             predictedResult = Translation.LobbyUiUnavailableRole;
         }
@@ -482,7 +482,7 @@ public class Core : Plugin
             
             var hasChanges = false;
                 
-            foreach (var player in Player.List.Where(x => !x.IsDestroyed && x.IsReady && !x.IsHost && (x.IsPlayer || Config.Dummy)))
+            foreach (var player in Player.List.Where(x => !x.IsDestroyed && x.IsReady && !x.IsHost && (x.IsPlayer || Config.DummyMode)))
             {
                 if (!_modifiedTickets.Add(player.UserId))
                     continue;
@@ -547,7 +547,7 @@ public class Core : Plugin
             _spawnReasons.Clear();
 
             var playersCount =
-                Player.List.Count(x => !x.IsDestroyed && x.IsReady && RoleAssigner.CheckPlayer(x.ReferenceHub));
+                Player.List.Count(x => !x.IsDestroyed && x.IsReady && RoleAssigner.CheckPlayer(x.ReferenceHub) && (ScpSpawnPreferences.Preferences.ContainsKey(x.Connection.connectionId) || Config.IncludeDummyInCalculations));
             var targetScpNumber = Enumerable.Range(0, playersCount)
                 .Count(i => teamRespawnQueue[i % teamRespawnQueue.Length] == '0');
             

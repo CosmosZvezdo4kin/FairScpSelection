@@ -59,7 +59,7 @@ public class ModifyTickets : ICommand, IUsageProvider
                 return false;
             }
 
-            if (!Player.TryGet(playerId, out var player) || player.IsDestroyed || !player.IsReady || player.IsHost || (!player.IsPlayer && !Core.Singleton.Config.Dummy))
+            if (!Player.TryGet(playerId, out var player) || player.IsDestroyed || !player.IsReady || player.IsHost || (!player.IsPlayer && !Core.Singleton.Config.DummyMode))
             {
                 response = $"Player with this PlayerId was not found - {stringPlayerId}\n" + this.DisplayCommandUsage();
                 return false;
