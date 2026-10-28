@@ -235,16 +235,16 @@ public class Core : Plugin
         if (!CanSpawn(roleTypeId))
             return false;
         
-        if (Config.SpawnRestrictions.PreventAiLoneliness && roleTypeId == RoleTypeId.Scp079 && targetScpNumber < 2)
+        if (Config.SpawnRestrictions.PreventAiLoneliness && roleTypeId == RoleTypeId.Scp079 && (targetScpNumber < 2 || enqueuedRoles.Count(x => x.Value.IsScp()) < 1))
             return false;
         
-        if (Config.SpawnRestrictions.PreventShyGuyLoneliness && roleTypeId == RoleTypeId.Scp096 && targetScpNumber < 2)
+        if (Config.SpawnRestrictions.PreventShyGuyLoneliness && roleTypeId == RoleTypeId.Scp096 && (targetScpNumber < 2 || enqueuedRoles.Count(x => x.Value.IsScp()) < 1))
             return false;
             
-        if (Config.SpawnRestrictions.PreventWorstDuo && roleTypeId == RoleTypeId.Scp096 && enqueuedRoles.ContainsValue(RoleTypeId.Scp079) && targetScpNumber < 3)
+        if (Config.SpawnRestrictions.PreventWorstDuo && roleTypeId == RoleTypeId.Scp096 && enqueuedRoles.ContainsValue(RoleTypeId.Scp079) && (targetScpNumber < 3 || enqueuedRoles.Count(x => x.Value.IsScp()) < 2))
             return false;
             
-        if (Config.SpawnRestrictions.PreventWorstDuo && roleTypeId == RoleTypeId.Scp079 && enqueuedRoles.ContainsValue(RoleTypeId.Scp096) && targetScpNumber < 3)
+        if (Config.SpawnRestrictions.PreventWorstDuo && roleTypeId == RoleTypeId.Scp079 && enqueuedRoles.ContainsValue(RoleTypeId.Scp096) && (targetScpNumber < 3 || enqueuedRoles.Count(x => x.Value.IsScp()) < 2))
             return false;
 
         return true;
@@ -436,7 +436,7 @@ public class Core : Plugin
             if (!int.TryParse(arguments[1], out var tickets))
                 continue;
             
-            _reservedScpTickets.Add(userId, tickets);
+            _reservedScpTickets[userId] = tickets;
         }
     }
     
