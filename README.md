@@ -15,20 +15,20 @@ I am not a native English speaker, so there may be quite a few errors - both log
     <tr>
         <td align="center">
             <img src="https://flagsapi.com/US/flat/64.png" height=30><br>
-            <a href="GUIDE.md">English</a>
+            <a href="docs/GUIDE.md">English</a>
         </td>
         <td align="center">
             <img src="https://flagsapi.com/RU/flat/64.png" height=30><br>
-            <a href="GUIDE-ru.md">Русский</a>
+            <a href="docs/GUIDE-ru.md">Русский</a>
         </td>
     </tr>
 </table>
 
 # Installation
 
-Put plugin dll from [releases](/releases/latest) in `LabAPI/plugins/...`
+Put plugin dll from [releases](../../releases/latest) in `LabAPI/plugins/...`
 
-Put `0Harmony.dll` from [releases](/releases/latest) in `LabAPI/dependencies/...`
+Put `0Harmony.dll` from [releases](../../releases/latest) in `LabAPI/dependencies/...`
 
 # Config and Features
 

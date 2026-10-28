@@ -5,6 +5,7 @@
     <explicitIncludes />
     <explicitExcludes>
       <Path>GUIDE.md</Path>
+      <Path>docs</Path>
       <Path>img</Path>
     </explicitExcludes>
   </component>

@@ -90,8 +90,8 @@
       <None Include="packages.config" />
     </ItemGroup>
     <ItemGroup>
-      <Content Include="GUIDE-ru.md" />
-      <Content Include="GUIDE.md" />
+      <Content Include="docs\GUIDE-ru.md" />
+      <Content Include="docs\GUIDE.md" />
     </ItemGroup>
     <ItemGroup>
       <Folder Include=".git\" />

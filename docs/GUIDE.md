@@ -4,19 +4,19 @@ The name speaks for itself
 ## "I only want to play as one specific SCP"
 In the `Other` -> `SCP Spawn Preferences` setting, place your favorite SCP to the right of the center, and place the other SCPs to the left of the center
 
-<img src="img/one_scp.png" width="60%">
+<img src="../img/one_scp.png" width="60%">
 
 ## "I have a few favorite SCPs"
 In the `Other` -> `SCP Spawn Preferences` setting, arrange your favorite SCPs in an order where an SCP positioned further to the right is more preferred
 
-<img src="img/a_few_scps.png" width="60%">
+<img src="../img/a_few_scps.png" width="60%">
 
 ## "I don't want to play as an SCP"
 In the settings, under the `Other` category, enable the `Opt Out of SCP` option, or enable the `Opt Out of SCP` option in the waiting lobby
 
-<img src="img/settings_opt_out.png" width="60%" alt="Option in settings">
+<img src="../img/settings_opt_out.png" width="60%" alt="Option in settings">
 
-<img src="img/lobby_opt_out.png" width="60%" alt="Option in lobby">
+<img src="../img/lobby_opt_out.png" width="60%" alt="Option in lobby">
 
 > [!WARNING]
 > There may be situations where the server cannot find enough players to spawn as SCPs and begins selecting additional players based on a ticket system. In such cases, I strongly recommend arranging your "SCP Spawn Preferences" settings so that the SCPs positioned further to the right are the ones you prefer most
