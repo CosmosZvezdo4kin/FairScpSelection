@@ -30,7 +30,7 @@ public class Core : Plugin
     public override string Name => "FairScpSelection";
     public override string Description => "Reworked SCP selection system that prioritizes player preferences";
     public override string Author => "CosmosZvezdochkin";
-    public override Version Version => new(1, 0, 1);
+    public override Version Version => new(1, 1, 0);
     public override Version RequiredApiVersion => new(LabApiProperties.CompiledVersion);
     
     public static Core Singleton;
