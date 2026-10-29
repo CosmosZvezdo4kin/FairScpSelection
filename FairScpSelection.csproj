@@ -33,10 +33,12 @@
         <DefineConstants>TRACE</DefineConstants>
         <ErrorReport>prompt</ErrorReport>
         <WarningLevel>4</WarningLevel>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
     <ItemGroup>
         <Reference Include="0Harmony">
           <HintPath>$(EXILED_REFERENCES)\0Harmony.dll</HintPath>
+            <Private>false</Private>
         </Reference>
         <Reference Include="Assembly-CSharp">
           <HintPath>$(EXILED_REFERENCES)\Assembly-CSharp-Publicized.dll</HintPath>
@@ -68,8 +70,10 @@
         </Reference>
     </ItemGroup>
     <ItemGroup>
+        <Compile Include="Commands\AllowScpOverflow.cs" />
         <Compile Include="Commands\ModifyTickets.cs" />
         <Compile Include="Commands\PredictSpawnRoles.cs" />
+        <Compile Include="Commands\ResetScpOverflow.cs" />
         <Compile Include="Commands\RoleLimitations.cs" />
         <Compile Include="Commands\SealScpTickets.cs" />
         <Compile Include="Commands\SpawnPreference.cs" />
@@ -88,14 +92,6 @@
     </ItemGroup>
     <ItemGroup>
       <None Include="packages.config" />
-    </ItemGroup>
-    <ItemGroup>
-      <Content Include="docs\GUIDE-ru.md" />
-      <Content Include="docs\GUIDE.md" />
-    </ItemGroup>
-    <ItemGroup>
-      <Folder Include=".git\" />
-      <Folder Include="img\" />
     </ItemGroup>
     <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets"/>
     <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

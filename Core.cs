@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using FairScpSelection.Patches;
 using FairScpSelection.Structures;
 using GameCore;
 using HarmonyLib;
@@ -15,7 +16,6 @@ using LabApi.Loader;
 using LabApi.Loader.Features.Plugins;
 using MapGeneration.Holidays;
 using MEC;
-using MonoMod.Utils;
 using PlayerRoles;
 using PlayerRoles.RoleAssign;
 using UnityEngine;
@@ -30,7 +30,7 @@ public class Core : Plugin
     public override string Name => "FairScpSelection";
     public override string Description => "Reworked SCP selection system that prioritizes player preferences";
     public override string Author => "CosmosZvezdochkin";
-    public override Version Version => new(1, 0, 0);
+    public override Version Version => new(1, 0, 1);
     public override Version RequiredApiVersion => new(LabApiProperties.CompiledVersion);
     
     public static Core Singleton;
@@ -44,6 +44,7 @@ public class Core : Plugin
     public int TargetRolesNumber { get; set; } = -1;
     public bool ShouldModifyTickets { get; set; } = true;
     public bool ShouldOrderListByTickets { get; set; } = true;
+    public bool AllowScpOverflow { get; set; } = false;
     
     private bool _hasValidConfigs;
     private bool _hasValidTranslation;
@@ -82,6 +83,8 @@ public class Core : Plugin
         _predictedRoles = new Dictionary<Player, RoleTypeId>();
         _spawnReasons =  new Dictionary<Player, string>();
         _modifiedTickets = new HashSet<string>();
+        
+        AllowScpOverflow = ConfigFile.ServerConfig.GetBool("allow_scp_overflow", false);
 
         RegisterEvents();
         
@@ -124,6 +127,9 @@ public class Core : Plugin
         var roleLimitations = new Dictionary<RoleTypeId, int>(RoleLimitations);
         
         spawnReason = new Dictionary<Player, string>();
+
+        if (targetRolesNumber == 0 || roleLimitations.Count(x => x.Value > 0) == 0)
+            return predictedRoles;
         
         foreach (var player in Player.List.Where(x => !x.IsDestroyed && x.IsReady && !x.IsHost && (x.IsPlayer || Config.DummyMode)))
         {
@@ -148,13 +154,13 @@ public class Core : Plugin
         var iteration = 0;
         var targetsCount = 0;
 
-        while (targetsCount < targetRolesNumber && iteration < 2)
+        while (targetsCount < targetRolesNumber && roleLimitations.Count(x => x.Value > 0) > 0 && iteration < 2)
         {
             var playerList = ShouldOrderListByTickets ? playerTickets.OrderByDescending(x => x.Value).ToList() : playerTickets.OrderByDescending(_ => Random.Range(0, 2) < 1).ToList();
             
             foreach (var player in playerList.Select(x => x.Key))
             {
-                if (targetsCount >= targetRolesNumber)
+                if (targetsCount >= targetRolesNumber || roleLimitations.Count(x => x.Value > 0) == 0)
                     break;
                 
                 if (predictedRoles.ContainsKey(player))
@@ -175,7 +181,7 @@ public class Core : Plugin
                             .Select(key => new KeyValuePair<RoleTypeId, int>(key, 0)))
                     .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
                 
-                if (ScpPlayerPicker.IsOptedOutOfScp(player.ReferenceHub) && player.IsPlayer && iteration == 0)
+                if (player.IsPlayer && iteration == 0 && ScpPlayerPicker.IsOptedOutOfScp(player.ReferenceHub))
                     continue;
                 
                 var allPreferencesBelowMid = preferences.All(x => x.Value < 5);
@@ -210,7 +216,7 @@ public class Core : Plugin
         return predictedRoles;
     }
 
-    private bool CanSpawn(RoleTypeId roleTypeId)
+    public bool CanSpawn(RoleTypeId roleTypeId)
     {
         if (!Config.SpawnRestrictions.IsEnabled)
             return true;
@@ -306,6 +312,7 @@ public class Core : Plugin
         TargetRolesNumber = -1;
         ShouldModifyTickets = true;
         ShouldOrderListByTickets = true;
+        AllowScpOverflow = ConfigFile.ServerConfig.GetBool("allow_scp_overflow", false);
         
         ResetTickets.Clear();
         
@@ -343,7 +350,11 @@ public class Core : Plugin
 
         try
         {
-            _harmony.PatchAll();
+            _harmony.Patch(
+                original: AccessTools.Method(typeof(ScpSpawner), nameof(ScpSpawner.SpawnScps)),
+                prefix: new HarmonyMethod(typeof(SpawnScps), nameof(SpawnScps.Prefix)));
+            
+            //_harmony.PatchAll();
         }
         catch (Exception ex)
         {
@@ -366,7 +377,8 @@ public class Core : Plugin
     {
         RoleLimitations.Clear();
         
-        RoleLimitations.AddRange(Config.RoleLimitations);
+        foreach (var configRoleLimitation in Config.RoleLimitations)
+            RoleLimitations[configRoleLimitation.Key] = configRoleLimitation.Value;
     }
     
     #endregion
@@ -450,7 +462,7 @@ public class Core : Plugin
         var minTickets = Mathf.Clamp(Config.MinTickets, 0, int.MaxValue);
         var maxTickets = Mathf.Clamp(Config.MaxTickets, 0, int.MaxValue);
         
-        while (!RoundSummary._singletonSet)
+        while (RoundSummary.singleton == null)
             yield return Timing.WaitForOneFrame;
 
         while (!Round.IsRoundStarted && !Round.IsRoundEnded)
@@ -532,7 +544,7 @@ public class Core : Plugin
         var coroutineDelay = Mathf.Clamp(Config.LobbyInterface.CoroutineDelay, 0, float.MaxValue);
         var hintDuration = Mathf.Clamp(Config.LobbyInterface.HintDuration, 0.1f, float.MaxValue);
         
-        while (!RoundSummary._singletonSet)
+        while (RoundSummary.singleton == null)
             yield return Timing.WaitForOneFrame;
 
         while (!Round.IsRoundStarted)
@@ -553,8 +565,11 @@ public class Core : Plugin
             
             var predictedRoles = PredictSpawnRoles(TicketLoader.TicketsEntries, targetScpNumber, out var spawnReason);
                 
-            _predictedRoles.AddRange(predictedRoles);
-            _spawnReasons.AddRange(spawnReason);
+            foreach (var kvp in predictedRoles)
+                _predictedRoles[kvp.Key] = kvp.Value;
+            
+            foreach (var kvp in spawnReason)
+                _spawnReasons[kvp.Key] = kvp.Value;
             
             // FadeInAndOut(1,1,1) effect prevents hint transparency bug
             
