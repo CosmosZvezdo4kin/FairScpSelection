@@ -2,7 +2,9 @@ using System;
 using System.Linq;
 using CommandSystem;
 using LabApi.Features.Permissions;
+using LabApi.Features.Wrappers;
 using PlayerRoles;
+using PlayerRoles.RoleAssign;
 
 namespace FairScpSelection.Commands;
 

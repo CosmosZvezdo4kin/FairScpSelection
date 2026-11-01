@@ -84,6 +84,7 @@
         <Compile Include="Configs\ReservedScpTickets.cs" />
         <Compile Include="Configs\SpawnRestrictions.cs" />
         <Compile Include="Core.cs" />
+        <Compile Include="Extensions.cs" />
         <Compile Include="Patches\SpawnScps.cs" />
         <Compile Include="Properties\AssemblyInfo.cs"/>
         <Compile Include="Structures\TicketEntry.cs" />

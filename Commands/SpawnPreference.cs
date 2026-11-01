@@ -52,15 +52,14 @@ public class SpawnPreference : ICommand, IUsageProvider
             response = $"Player with this PlayerId was not found - {stringPlayerId}\n" + this.DisplayCommandUsage();
             return false;
         }
-        
-        if (!ScpSpawnPreferences.Preferences.ContainsKey(player.Connection.connectionId) && player.IsDummy)
-            ScpSpawnPreferences.Preferences[player.Connection.connectionId] = new ScpSpawnPreferences.SpawnPreferences(false);
 
-        if (!ScpSpawnPreferences.Preferences.TryGetValue(player.Connection.connectionId, out var spawnPreferences))
+        if (!player.HasSpawnPreferences())
         {
             response = "This player has no spawn preferences";
             return false;
         }
+        
+        var spawnPreferences = player.GetSpawnPreferences();
 
         if (arguments.Count < 3)
         {

@@ -10,11 +10,9 @@ using Hints;
 using LabApi.Events.Arguments.ServerEvents;
 using LabApi.Events.Handlers;
 using LabApi.Features;
-using LabApi.Features.Extensions;
 using LabApi.Features.Wrappers;
 using LabApi.Loader;
 using LabApi.Loader.Features.Plugins;
-using MapGeneration.Holidays;
 using MEC;
 using PlayerRoles;
 using PlayerRoles.RoleAssign;
@@ -30,7 +28,7 @@ public class Core : Plugin
     public override string Name => "FairScpSelection";
     public override string Description => "Reworked SCP selection system that prioritizes player preferences";
     public override string Author => "CosmosZvezdochkin";
-    public override Version Version => new(1, 1, 0);
+    public override Version Version => new(1, 1, 1);
     public override Version RequiredApiVersion => new(LabApiProperties.CompiledVersion);
     
     public static Core Singleton;
@@ -131,9 +129,9 @@ public class Core : Plugin
         if (targetRolesNumber == 0 || roleLimitations.Count(x => x.Value > 0) == 0)
             return predictedRoles;
         
-        foreach (var player in Player.List.Where(x => !x.IsDestroyed && x.IsReady && !x.IsHost && (x.IsPlayer || Config.DummyMode)))
+        foreach (var player in Player.List.Where(x => x.HasSpawnPreferences()))
         {
-            if (!RoleAssigner.CheckPlayer(player.ReferenceHub) || !ScpSpawnPreferences.Preferences.ContainsKey(player.Connection.connectionId))
+            if (!RoleAssigner.CheckPlayer(player.ReferenceHub))
             {
                 predictedRoles[player] = RoleTypeId.Destroyed;
                 spawnReason[player] = Translation.UnavailableRoleSpawnReason;
@@ -166,16 +164,15 @@ public class Core : Plugin
                 if (predictedRoles.ContainsKey(player))
                     continue;
 
-                if (!ScpSpawnPreferences.Preferences.TryGetValue(player.Connection.connectionId, out var spawnPreferences))
-                    continue;
+                var spawnPreferences = player.GetSpawnPreferences();
                 
                 var preferences = spawnPreferences.Preferences
                     .Select(p => new KeyValuePair<RoleTypeId, int>(
                         p.Key,
-                        CanSpawn(p.Key) && RoleLimitations.TryGetValue(p.Key, out var limit) && limit > 0 ? p.Value + 5 : 0))
+                        p.Key.CanSpawn() && RoleLimitations.TryGetValue(p.Key, out var limit) && limit > 0 ? p.Value + 5 : 0))
                     .Concat(
                         RoleLimitations
-                            .Where(kvp => CanSpawn(kvp.Key) && kvp.Value > 0)
+                            .Where(kvp => kvp.Key.CanSpawn() && kvp.Value > 0)
                             .Select(kvp => kvp.Key)
                             .Except(spawnPreferences.Preferences.Select(p => p.Key))
                             .Select(key => new KeyValuePair<RoleTypeId, int>(key, 0)))
@@ -191,7 +188,7 @@ public class Core : Plugin
                     var roleType = kvp.Key;
                     var preferenceValue = kvp.Value;
                     
-                    if (!CanQueueRole(roleType, predictedRoles, targetRolesNumber))
+                    if (!roleType.CanQueueRole(predictedRoles, targetRolesNumber, playerTickets.Count()))
                         continue;
                 
                     if (!roleLimitations.TryGetValue(roleType, out var limitNumber) || limitNumber <= 0)
@@ -215,46 +212,6 @@ public class Core : Plugin
 
         return predictedRoles;
     }
-
-    public bool CanSpawn(RoleTypeId roleTypeId)
-    {
-        if (!Config.SpawnRestrictions.IsEnabled)
-            return true;
-        
-        if (Config.SpawnRestrictions.PreventNonScp && !roleTypeId.IsScp())
-            return false;
-
-        if (Config.SpawnRestrictions.PreventZombies && roleTypeId == RoleTypeId.Scp0492)
-            return false;
-
-        if (Config.SpawnRestrictions.Scp3114HalloweenOnly && HolidayUtils.GetActiveHoliday() != HolidayType.Halloween && roleTypeId == RoleTypeId.Scp3114)
-            return false;
-
-        return true;
-    }
-
-    private bool CanQueueRole(RoleTypeId roleTypeId, Dictionary<Player, RoleTypeId> enqueuedRoles, int targetScpNumber)
-    {
-        if (!Config.SpawnRestrictions.IsEnabled)
-            return true;
-        
-        if (!CanSpawn(roleTypeId))
-            return false;
-        
-        if (Config.SpawnRestrictions.PreventAiLoneliness && roleTypeId == RoleTypeId.Scp079 && (targetScpNumber < 2 || enqueuedRoles.Count(x => x.Value.IsScp()) < 1))
-            return false;
-        
-        if (Config.SpawnRestrictions.PreventShyGuyLoneliness && roleTypeId == RoleTypeId.Scp096 && (targetScpNumber < 2 || enqueuedRoles.Count(x => x.Value.IsScp()) < 1))
-            return false;
-            
-        if (Config.SpawnRestrictions.PreventWorstDuo && roleTypeId == RoleTypeId.Scp096 && enqueuedRoles.ContainsValue(RoleTypeId.Scp079) && (targetScpNumber < 3 || enqueuedRoles.Count(x => x.Value.IsScp()) < 2))
-            return false;
-            
-        if (Config.SpawnRestrictions.PreventWorstDuo && roleTypeId == RoleTypeId.Scp079 && enqueuedRoles.ContainsValue(RoleTypeId.Scp096) && (targetScpNumber < 3 || enqueuedRoles.Count(x => x.Value.IsScp()) < 2))
-            return false;
-
-        return true;
-    }
     
     private string FormatUiText(string input, Player player)
     {
@@ -267,14 +224,18 @@ public class Core : Plugin
         
         var bufferTeammates = new Dictionary<RoleTypeId, int>();
         
-        var predictedResult = Translation.LobbyUiOtherRole;
+        var predictedResult = string.Empty;
         var predictedTeammates = Translation.LobbyUiNoData;
 
         var canSeeTeammates = Config.LobbyInterface.ShowRolesTeammatesWhitelist.Contains(predictedRole) ||
                               Config.LobbyInterface.ShowTeamTeammatesWhitelist.Contains(predictedRole.GetTeam()) ||
                               Config.LobbyInterface.ShowFactionTeammatesWhitelist.Contains(predictedRole.GetFaction());
-        
-        if (!predictedRole.IsAlive() && predictedRole != RoleTypeId.Destroyed)
+
+        if (predictedRole == RoleTypeId.Destroyed)
+        {
+            predictedResult = Translation.LobbyUiOtherRole;
+        }
+        else if (!predictedRole.IsAlive())
         {
             predictedResult = Translation.LobbyUiUnavailableRole;
         }
@@ -559,7 +520,9 @@ public class Core : Plugin
             _spawnReasons.Clear();
 
             var playersCount =
-                Player.List.Count(x => !x.IsDestroyed && x.IsReady && RoleAssigner.CheckPlayer(x.ReferenceHub) && (ScpSpawnPreferences.Preferences.ContainsKey(x.Connection.connectionId) || Config.IncludeDummyInCalculations));
+                Player.List.Count(x =>
+                    !x.IsDestroyed && x.IsReady && RoleAssigner.CheckPlayer(x.ReferenceHub) && (x.HasSpawnPreferences() || (x.IsDummy && Config.IncludeDummyInCalculations)));
+            
             var targetScpNumber = Enumerable.Range(0, playersCount)
                 .Count(i => teamRespawnQueue[i % teamRespawnQueue.Length] == '0');
             
