@@ -10,6 +10,8 @@ I am not a native English speaker, so there may be quite a few errors - both log
 
 [Skip to summary](https://github.com/CosmosZvezdo4kin/FairScpSelection/#what-is-this-plugin-for-)
 
+<video src="https://github-production-user-asset-6210df.s3.amazonaws.com/66907231/692546723-06db557b-13a8-40de-a0b7-ed393b5855d0.mp4" width="60%" controls></video>
+
 ### Localized player guides
 
 <table>
