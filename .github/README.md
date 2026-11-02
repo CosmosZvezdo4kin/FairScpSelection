@@ -8,9 +8,9 @@ I am not a native English speaker, so there may be quite a few errors - both log
 
 ### TL;DR
 
-[Skip to summary](https://github.com/CosmosZvezdo4kin/FairScpSelection/#what-is-this-plugin-for-)
+[Watch UI demo](https://drive.google.com/file/d/1yMVPQJ1SiICLff5E0fvMC7qOdpKVk5Uh/view?usp=sharing)
 
-<video src="https://github.com/user-attachments/assets/06db557b-13a8-40de-a0b7-ed393b5855d0" width="60%" controls></video>
+[Skip to summary](https://github.com/CosmosZvezdo4kin/FairScpSelection/#what-is-this-plugin-for-)
 
 ### Localized player guides
 
