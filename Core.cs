@@ -37,6 +37,9 @@ public class Core : Plugin
     internal Config Config;
     internal Translation Translation;
     
+    #if YASSA
+    
+    #endif
     public Dictionary<RoleTypeId, int> RoleLimitations { get; } = new();
     public HashSet<string> ResetTickets { get; } = new();
     public int TargetRolesNumber { get; set; } = -1;
@@ -111,107 +114,6 @@ public class Core : Plugin
     }
 
     #region PLUGIN UTILITY
-    
-    internal Dictionary<Player, RoleTypeId> PredictSpawnRoles(Dictionary<string, TicketEntry> entries, int targetRolesNumber, out Dictionary<Player, string> spawnReason)
-    {
-        if (TargetRolesNumber >= 0)
-            targetRolesNumber = TargetRolesNumber;
-        
-        var minTickets = Mathf.Clamp(Config.MinTickets, 0, int.MaxValue);
-        
-        var predictedRoles = new Dictionary<Player, RoleTypeId>();
-        var playerTickets = new Dictionary<Player, int>();
-        
-        var roleLimitations = new Dictionary<RoleTypeId, int>(RoleLimitations);
-        
-        spawnReason = new Dictionary<Player, string>();
-
-        if (targetRolesNumber == 0 || roleLimitations.Count(x => x.Value > 0) == 0)
-            return predictedRoles;
-        
-        foreach (var player in Player.List.Where(x => x.HasSpawnPreferences()))
-        {
-            if (!RoleAssigner.CheckPlayer(player.ReferenceHub))
-            {
-                predictedRoles[player] = RoleTypeId.Destroyed;
-                spawnReason[player] = Translation.UnavailableRoleSpawnReason;
-                continue;
-            }
-            
-            var tickets = minTickets;
-
-            if (entries.TryGetValue(player.UserId, out var ticketsEntry))
-                tickets = ticketsEntry.Tickets;
-
-            playerTickets[player] = tickets;
-        }
-
-        if (!playerTickets.Any())
-            return predictedRoles;
-
-        var iteration = 0;
-        var targetsCount = 0;
-
-        while (targetsCount < targetRolesNumber && roleLimitations.Count(x => x.Value > 0) > 0 && iteration < 2)
-        {
-            var playerList = ShouldOrderListByTickets ? playerTickets.OrderByDescending(x => x.Value).ToList() : playerTickets.OrderByDescending(_ => Random.Range(0, 2) < 1).ToList();
-            
-            foreach (var player in playerList.Select(x => x.Key))
-            {
-                if (targetsCount >= targetRolesNumber || roleLimitations.Count(x => x.Value > 0) == 0)
-                    break;
-                
-                if (predictedRoles.ContainsKey(player))
-                    continue;
-
-                var spawnPreferences = player.GetSpawnPreferences();
-                
-                var preferences = spawnPreferences.Preferences
-                    .Select(p => new KeyValuePair<RoleTypeId, int>(
-                        p.Key,
-                        p.Key.CanSpawn() && RoleLimitations.TryGetValue(p.Key, out var limit) && limit > 0 ? p.Value + 5 : 0))
-                    .Concat(
-                        RoleLimitations
-                            .Where(kvp => kvp.Key.CanSpawn() && kvp.Value > 0)
-                            .Select(kvp => kvp.Key)
-                            .Except(spawnPreferences.Preferences.Select(p => p.Key))
-                            .Select(key => new KeyValuePair<RoleTypeId, int>(key, 0)))
-                    .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-                
-                if (player.IsPlayer && iteration == 0 && ScpPlayerPicker.IsOptedOutOfScp(player.ReferenceHub))
-                    continue;
-                
-                var allPreferencesBelowMid = preferences.All(x => x.Value < 5);
-                
-                foreach (var kvp in preferences.OrderByDescending(x => x.Value))
-                {
-                    var roleType = kvp.Key;
-                    var preferenceValue = kvp.Value;
-                    
-                    if (!roleType.CanQueueRole(predictedRoles, targetRolesNumber, playerTickets.Count()))
-                        continue;
-                
-                    if (!roleLimitations.TryGetValue(roleType, out var limitNumber) || limitNumber <= 0)
-                        continue;
-                    
-                    if (!allPreferencesBelowMid && preferenceValue < 5 && iteration == 0)
-                        continue;
-
-                    roleLimitations[roleType] -= 1;
-                    targetsCount++;
-                
-                    predictedRoles[player] = roleType;
-                    spawnReason[player] = iteration == 0 ? string.Format(Translation.HighPreferenceSpawnReason, preferenceValue) : string.Format(Translation.NotEnoughPlayersSpawnReason, preferenceValue);
-                
-                    break;
-                }
-            }
-            
-            iteration++;
-        }
-
-        return predictedRoles;
-    }
     
     private string FormatUiText(string input, Player player)
     {
@@ -526,7 +428,7 @@ public class Core : Plugin
             var targetScpNumber = Enumerable.Range(0, playersCount)
                 .Count(i => teamRespawnQueue[i % teamRespawnQueue.Length] == '0');
             
-            var predictedRoles = PredictSpawnRoles(TicketLoader.TicketsEntries, targetScpNumber, out var spawnReason);
+            var predictedRoles = Extensions.PredictSpawnRoles(TicketLoader.TicketsEntries, targetScpNumber, out var spawnReason);
                 
             foreach (var kvp in predictedRoles)
                 _predictedRoles[kvp.Key] = kvp.Value;

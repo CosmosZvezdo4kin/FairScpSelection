@@ -42,7 +42,7 @@ public class SpawnScps
         
         Logger.Debug($"Predicting spawn roles for {playersCount} player(-s) ...", Core.Singleton.Config.Debug);
         
-        var predictedSpawnRoles = Core.Singleton.PredictSpawnRoles(ticketsEntries, targetScpNumber, out var spawnReason);
+        var predictedSpawnRoles = Extensions.PredictSpawnRoles(ticketsEntries, targetScpNumber, out var spawnReason);
         
         var spawnResult = string.Empty;
         var reservedScpTicketsContent = string.Empty;

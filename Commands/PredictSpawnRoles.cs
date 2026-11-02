@@ -51,7 +51,7 @@ public class PredictSpawnRoles : ICommand, IUsageProvider
         
         var ticketsEntries = Core.Singleton.TicketLoader.TicketsEntries;
 
-        var predictedSpawnRoles = Core.Singleton.PredictSpawnRoles(ticketsEntries, targetRolesNumber, out var spawnReason);
+        var predictedSpawnRoles = Extensions.PredictSpawnRoles(ticketsEntries, targetRolesNumber, out var spawnReason);
 
         var predictedSpawnResult = string.Empty;
         
