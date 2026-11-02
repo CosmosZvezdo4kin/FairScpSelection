@@ -1,7 +1,5 @@
 using System.Linq;
-using GameCore;
 using LabApi.Features.Extensions;
-using LabApi.Features.Wrappers;
 using PlayerRoles;
 using PlayerRoles.RoleAssign;
 using Logger = LabApi.Features.Console.Logger;
@@ -23,20 +21,14 @@ public class SpawnScps
 
         RoleAssigner.ScpOverflowMaxHsMultiplier = 1f;
         RoleAssigner.ScpsOverflowing = false;
-        
-        var teamRespawnQueue = ConfigFile.ServerConfig.GetString("team_respawn_queue", "4014314031441404134041434414");
 
-        var playersCount =
-            Player.List.Count(x =>
-                !x.IsDestroyed && x.IsReady && RoleAssigner.CheckPlayer(x.ReferenceHub) && (x.HasSpawnPreferences() || (x.IsDummy && Core.Singleton.Config.IncludeDummyInCalculations)));
+        var playersCount = Extensions.GetPlayersCount();
+
+        var targetScpNumber = Extensions.GetTargetRolesNumber(playersCount);
         
-        var targetScpNumber = Enumerable.Range(0, playersCount)
-            .Count(i => teamRespawnQueue[i % teamRespawnQueue.Length] == '0');
-        var scpLimitNumber = Core.Singleton.RoleLimitations
-            .Where(x => x.Key.IsScp() && x.Key.CanSpawn() && x.Value > 0)
-            .Sum(x => x.Value);
+        var scpLimitNumber = Extensions.GetRolesLimitNumber(true);
         
-        Logger.Debug($"Target SCP number is set to {(Core.Singleton.TargetRolesNumber != -1 ? $"{Core.Singleton.TargetRolesNumber} via command" : targetScpNumber)} ...", Core.Singleton.Config.Debug);
+        Logger.Debug($"Target roles number is set to {(Core.Singleton.TargetRolesNumber != -1 ? $"{targetScpNumber} via command" : targetScpNumber)} ...", Core.Singleton.Config.Debug);
         
         var ticketsEntries = Core.Singleton.TicketLoader.TicketsEntries;
         

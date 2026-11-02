@@ -17,8 +17,12 @@ using MEC;
 using PlayerRoles;
 using PlayerRoles.RoleAssign;
 using UnityEngine;
+using UserSettings.ServerSpecific;
+using Yassa.LabApi.Features;
+using Yassa.LabApi.Features.Builders;
+using Yassa.LabApi.Interfaces;
+using Yassa.LabApi.Models;
 using Logger = LabApi.Features.Console.Logger;
-using Random = UnityEngine.Random;
 using Version = System.Version;
 
 namespace FairScpSelection;
@@ -31,31 +35,34 @@ public class Core : Plugin
     public override Version Version => new(1, 1, 1);
     public override Version RequiredApiVersion => new(LabApiProperties.CompiledVersion);
     
-    public static Core Singleton;
+    internal static Core Singleton;
 
-    public TicketLoader TicketLoader;
+    internal TicketLoader TicketLoader;
     internal Config Config;
     internal Translation Translation;
     
-    #if YASSA
+    internal readonly Dictionary<RoleTypeId, int> RoleLimitations = new();
+    internal readonly HashSet<string> ResetTickets = new();
+    internal int TargetRolesNumber { get; set; } = -1;
+    internal bool ShouldModifyTickets { get; set; } = true;
+    internal bool ShouldOrderListByTickets { get; set; } = true;
+    internal bool AllowScpOverflow { get; set; } = false;
     
-    #endif
-    public Dictionary<RoleTypeId, int> RoleLimitations { get; } = new();
-    public HashSet<string> ResetTickets { get; } = new();
-    public int TargetRolesNumber { get; set; } = -1;
-    public bool ShouldModifyTickets { get; set; } = true;
-    public bool ShouldOrderListByTickets { get; set; } = true;
-    public bool AllowScpOverflow { get; set; } = false;
-    
+    private readonly Dictionary<string, int> _reservedScpTickets = new();
+    private readonly Dictionary<Player, RoleTypeId> _predictedRoles = new();
+    private readonly Dictionary<Player, string> _spawnReasons = new();
+    private readonly HashSet<string> _modifiedTickets = new();
     private bool _hasValidConfigs;
     private bool _hasValidTranslation;
-    private Dictionary<string, int> _reservedScpTickets;
-    private Dictionary<Player, RoleTypeId> _predictedRoles;
-    private Dictionary<Player, string> _spawnReasons;
-    private HashSet<string> _modifiedTickets;
     private CoroutineHandle _ticketsCoroutine;
     private CoroutineHandle _lobbyUiCoroutine;
     private Harmony _harmony;
+    
+#if YASSA
+    internal readonly Dictionary<int, RoleTypeId> RandomRole = new();
+    internal readonly Dictionary<int, HashSet<int>> ReceivedSettings = new();
+    internal OptionNode OptionNode;
+#endif
     
     private static string ReservedScpTicketsPath => Path.Combine(FileManager.GetAppFolder(true, true, string.Empty), "ReservedScpTickets.txt");
     
@@ -78,14 +85,14 @@ public class Core : Plugin
         
         TicketLoader ??= new TicketLoader(Config.MaxStorageTime);
         
-        ResetRoleLimitations();
-        
-        _reservedScpTickets = new Dictionary<string, int>();
-        _predictedRoles = new Dictionary<Player, RoleTypeId>();
-        _spawnReasons =  new Dictionary<Player, string>();
-        _modifiedTickets = new HashSet<string>();
-        
         AllowScpOverflow = ConfigFile.ServerConfig.GetBool("allow_scp_overflow", false);
+        
+#if YASSA
+        OptionNode ??= GetOptionNode();
+        OptionsService.Register(OptionNode);
+#endif
+        
+        ResetRoleLimitations();
 
         RegisterEvents();
         
@@ -96,6 +103,12 @@ public class Core : Plugin
     {
         UnpatchMethods();
         UnregisterEvents();
+
+#if YASSA
+        OptionsService.Unregister(OptionNode);
+        OptionNode = null;
+#endif
+        
         Dispose();
         
         Singleton = null;
@@ -112,8 +125,202 @@ public class Core : Plugin
         _hasValidConfigs = this.TryLoadConfig("config.yml", out Config);
         _hasValidTranslation = this.TryLoadConfig("translation.yml", out Translation);
     }
+    
+    private void Dispose()
+    {
+        TargetRolesNumber = -1;
+        ShouldModifyTickets = true;
+        ShouldOrderListByTickets = true;
+        AllowScpOverflow = ConfigFile.ServerConfig.GetBool("allow_scp_overflow", false);
+        
+        ResetTickets.Clear();
+        
+#if YASSA
+        RandomRole.Clear();
+        ReceivedSettings.Clear();
+#endif
+        
+        _predictedRoles.Clear();
+        _spawnReasons.Clear();
+        _reservedScpTickets.Clear();
+        _modifiedTickets.Clear();
+        
+        ResetRoleLimitations();
 
-    #region PLUGIN UTILITY
+        if (_ticketsCoroutine.IsRunning)
+            Timing.KillCoroutines(_ticketsCoroutine);
+        
+        if (_lobbyUiCoroutine.IsRunning)
+            Timing.KillCoroutines(_lobbyUiCoroutine);
+    }
+
+    private void RegisterEvents()
+    {
+        ServerEvents.RoundRestarted += OnRoundRestarted;
+        ServerEvents.WaitingForPlayers += OnWaitingForPlayers;
+        ServerEvents.RoundEnded += OnRoundEnded;
+    }
+
+    private void UnregisterEvents()
+    {
+        ServerEvents.RoundRestarted -= OnRoundRestarted;
+        ServerEvents.WaitingForPlayers -= OnWaitingForPlayers;
+        ServerEvents.RoundEnded -= OnRoundEnded;
+    }
+
+    private bool PatchMethods()
+    {
+        _harmony ??= new Harmony($"{Author}.{Name}.{DateTime.Now.Ticks}");
+
+        try
+        {
+            _harmony.Patch(
+                original: AccessTools.Method(typeof(ScpSpawner), nameof(ScpSpawner.SpawnScps)),
+                prefix: new HarmonyMethod(typeof(SpawnScps), nameof(SpawnScps.Prefix)));
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"Error occured while patching methods:\n{ex}");
+            return false;
+        }
+        
+        Logger.Info($"Successfully patched {_harmony.GetPatchedMethods()?.Count() ?? 0} method(-s)");
+        return true;
+    }
+
+    private void UnpatchMethods()
+    {
+        _harmony?.UnpatchAll();
+
+        _harmony = null;
+    }
+    
+    private void ResetRoleLimitations()
+    {
+        RoleLimitations.Clear();
+        
+        foreach (var configRoleLimitation in Config.RoleLimitations)
+            RoleLimitations[configRoleLimitation.Key] = configRoleLimitation.Value;
+    }
+
+    private void OnRoundRestarted()
+    {
+        Dispose();
+    }
+
+    private void OnWaitingForPlayers()
+    {
+        if (Config.ReservedScpTickets.IsEnabled)
+        {
+            ReadReservedScpTicketsFile();
+        
+            WriteReservedScpTicketsFile(string.Empty);
+        }
+        
+        if (!_ticketsCoroutine.IsRunning)
+            _ticketsCoroutine = Timing.RunCoroutine(GiveTickets());
+
+        if (Config.LobbyInterface.IsEnabled && !_lobbyUiCoroutine.IsRunning)
+            _lobbyUiCoroutine = Timing.RunCoroutine(RunLobbyUi());
+    }
+
+    private void OnRoundEnded(RoundEndedEventArgs ev)
+    {
+        if (!Config.ReservedScpTickets.IsEnabled)
+            return;
+        
+        if (Config.ReservedScpTickets.MinRoundDuration > 0 && Round.Duration.TotalSeconds < Config.ReservedScpTickets.MinRoundDuration)
+            return;
+        
+        WriteReservedScpTicketsFile(string.Empty);
+    }
+
+    #region YASSA INTEGRATION
+    #if YASSA
+
+    private OptionNode GetOptionNode()
+    {
+        var optionNode = new OptionNodeBuilder()
+            .SetHeader("FairScpSelection")
+            .SetHint("Client settings for FairScpSelection plugin")
+            .AddTwoButtonsOption(o => o
+                .SetCustomId(SharedConstants.RandomizeScpPreferencesToggle)
+                .SetLabel("Randomize Spawn Preferences")
+                .SetHint("")
+                .SetFirstOption("Enable")
+                .SetSecondOption("Disable")
+                .SetIsSecondDefault(true)
+                .OnValueReceived(OnValueReceived))
+            .Build();
+
+        return optionNode;
+    }
+    
+    private void OnValueReceived(Player player, IOption option)
+    {
+        if (player.IsDestroyed || !player.IsReady)
+            return;
+        
+        if (!ReceivedSettings.ContainsKey(player.PlayerId))
+            ReceivedSettings.Add(player.PlayerId, new HashSet<int>());
+        
+        ReceivedSettings[player.PlayerId].Add(option.Id);
+
+        if (option.CustomId == SharedConstants.RandomizeScpPreferencesToggle && ServerSpecificSettingsSync.TryGetSettingOfUser(player.ReferenceHub, option.Id, out SSTwoButtonsSetting twoButtonsSetting))
+        {
+            if (twoButtonsSetting.SyncIsA)
+            {
+                if (RandomRole.TryGetValue(player.PlayerId, out var previousRandomPriorityScp))
+                    RandomRole[player.PlayerId] = Enum.GetValues(typeof(RoleTypeId)).ToArray<RoleTypeId>().Where(x => x.CanSpawn() && x != previousRandomPriorityScp).GetRandomElement();
+                else
+                    RandomRole[player.PlayerId] = Enum.GetValues(typeof(RoleTypeId)).ToArray<RoleTypeId>().Where(x => x.CanSpawn()).GetRandomElement();
+            
+                Logger.Info($"Random role is {RandomRole[player.PlayerId]}");
+            }
+            else
+                RandomRole.Remove(player.PlayerId);
+        }
+    }
+    
+    #endif
+    #endregion
+
+    #region RESERVED SCP TICKETS
+    
+    internal void WriteReservedScpTicketsFile(string content)
+    {
+        File.WriteAllText(ReservedScpTicketsPath, content);
+    }
+    
+    private void ReadReservedScpTicketsFile()
+    {
+        if (!File.Exists(ReservedScpTicketsPath))
+        {
+            WriteReservedScpTicketsFile(string.Empty);
+            return;
+        }
+
+        var textLines = File.ReadAllLines(ReservedScpTicketsPath);
+
+        foreach (var line in textLines.Where(x => !string.IsNullOrEmpty(x.Trim())))
+        {
+            var arguments = line.Split(';');
+            
+            if (arguments.Length != 2)
+                continue;
+            
+            var userId = arguments[0];
+            
+            if (!int.TryParse(arguments[1], out var tickets))
+                continue;
+            
+            _reservedScpTickets[userId] = tickets;
+        }
+    }
+    
+    #endregion
+    
+    #region LOBBY UI
     
     private string FormatUiText(string input, Player player)
     {
@@ -164,155 +371,6 @@ public class Core : Plugin
             .Replace("{PredictedRole}", predictedResult)
             .Replace("{PredictedTeammates}", predictedTeammates)
             .Replace("{SpawnReason}", _spawnReasons.TryGetValue(player, out var spawnReason) ? spawnReason : string.Empty);
-    }
-    
-    #endregion
-
-    #region GENERAL UTILITY
-    
-    private void Dispose()
-    {
-        TargetRolesNumber = -1;
-        ShouldModifyTickets = true;
-        ShouldOrderListByTickets = true;
-        AllowScpOverflow = ConfigFile.ServerConfig.GetBool("allow_scp_overflow", false);
-        
-        ResetTickets.Clear();
-        
-        _predictedRoles.Clear();
-        _spawnReasons.Clear();
-        _reservedScpTickets.Clear();
-        _modifiedTickets.Clear();
-        
-        ResetRoleLimitations();
-
-        if (_ticketsCoroutine.IsRunning)
-            Timing.KillCoroutines(_ticketsCoroutine);
-        
-        if (_lobbyUiCoroutine.IsRunning)
-            Timing.KillCoroutines(_lobbyUiCoroutine);
-    }
-
-    private void RegisterEvents()
-    {
-        ServerEvents.RoundRestarted += OnRoundRestarted;
-        ServerEvents.WaitingForPlayers += OnWaitingForPlayers;
-        ServerEvents.RoundEnded += OnRoundEnded;
-    }
-
-    private void UnregisterEvents()
-    {
-        ServerEvents.RoundRestarted -= OnRoundRestarted;
-        ServerEvents.WaitingForPlayers -= OnWaitingForPlayers;
-        ServerEvents.RoundEnded -= OnRoundEnded;
-    }
-
-    private bool PatchMethods()
-    {
-        _harmony ??= new Harmony($"{Author}.{Name}.{DateTime.Now.Ticks}");
-
-        try
-        {
-            _harmony.Patch(
-                original: AccessTools.Method(typeof(ScpSpawner), nameof(ScpSpawner.SpawnScps)),
-                prefix: new HarmonyMethod(typeof(SpawnScps), nameof(SpawnScps.Prefix)));
-            
-            //_harmony.PatchAll();
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"Error occured while patching methods:\n{ex}");
-            return false;
-        }
-        
-        Logger.Info($"Successfully patched {_harmony.GetPatchedMethods()?.Count() ?? 0} method(-s)");
-        return true;
-    }
-
-    private void UnpatchMethods()
-    {
-        _harmony?.UnpatchAll();
-
-        _harmony = null;
-    }
-    
-    private void ResetRoleLimitations()
-    {
-        RoleLimitations.Clear();
-        
-        foreach (var configRoleLimitation in Config.RoleLimitations)
-            RoleLimitations[configRoleLimitation.Key] = configRoleLimitation.Value;
-    }
-    
-    #endregion
-
-    #region ROUND EVENTS
-
-    private void OnRoundRestarted()
-    {
-        Dispose();
-    }
-
-    private void OnWaitingForPlayers()
-    {
-        if (Config.ReservedScpTickets.IsEnabled)
-        {
-            ReadReservedScpTicketsFile();
-        
-            WriteReservedScpTicketsFile(string.Empty);
-        }
-        
-        if (!_ticketsCoroutine.IsRunning)
-            _ticketsCoroutine = Timing.RunCoroutine(GiveTickets());
-
-        if (Config.LobbyInterface.IsEnabled && !_lobbyUiCoroutine.IsRunning)
-            _lobbyUiCoroutine = Timing.RunCoroutine(RunLobbyUi());
-    }
-
-    private void OnRoundEnded(RoundEndedEventArgs ev)
-    {
-        if (!Config.ReservedScpTickets.IsEnabled)
-            return;
-        
-        if (Config.ReservedScpTickets.MinRoundDuration > 0 && Round.Duration.TotalSeconds < Config.ReservedScpTickets.MinRoundDuration)
-            return;
-        
-        WriteReservedScpTicketsFile(string.Empty);
-    }
-    
-    #endregion
-
-    #region RESERVED SCP TICKETS
-    
-    internal void WriteReservedScpTicketsFile(string content)
-    {
-        File.WriteAllText(ReservedScpTicketsPath, content);
-    }
-    
-    private void ReadReservedScpTicketsFile()
-    {
-        if (!File.Exists(ReservedScpTicketsPath))
-        {
-            WriteReservedScpTicketsFile(string.Empty);
-            return;
-        }
-
-        var textLines = File.ReadAllLines(ReservedScpTicketsPath);
-
-        foreach (var line in textLines.Where(x => !string.IsNullOrEmpty(x.Trim())))
-        {
-            var arguments = line.Split(';');
-            
-            if (arguments.Length != 2)
-                continue;
-            
-            var userId = arguments[0];
-            
-            if (!int.TryParse(arguments[1], out var tickets))
-                continue;
-            
-            _reservedScpTickets[userId] = tickets;
-        }
     }
     
     #endregion
@@ -403,7 +461,6 @@ public class Core : Plugin
     
     private IEnumerator<float> RunLobbyUi()
     {
-        var teamRespawnQueue = ConfigFile.ServerConfig.GetString("team_respawn_queue", "4014314031441404134041434414");
         var coroutineDelay = Mathf.Clamp(Config.LobbyInterface.CoroutineDelay, 0, float.MaxValue);
         var hintDuration = Mathf.Clamp(Config.LobbyInterface.HintDuration, 0.1f, float.MaxValue);
         
@@ -421,12 +478,9 @@ public class Core : Plugin
             _predictedRoles.Clear();
             _spawnReasons.Clear();
 
-            var playersCount =
-                Player.List.Count(x =>
-                    !x.IsDestroyed && x.IsReady && RoleAssigner.CheckPlayer(x.ReferenceHub) && (x.HasSpawnPreferences() || (x.IsDummy && Config.IncludeDummyInCalculations)));
-            
-            var targetScpNumber = Enumerable.Range(0, playersCount)
-                .Count(i => teamRespawnQueue[i % teamRespawnQueue.Length] == '0');
+            var playersCount = Extensions.GetPlayersCount();
+
+            var targetScpNumber = Extensions.GetTargetRolesNumber(playersCount);
             
             var predictedRoles = Extensions.PredictSpawnRoles(TicketLoader.TicketsEntries, targetScpNumber, out var spawnReason);
                 

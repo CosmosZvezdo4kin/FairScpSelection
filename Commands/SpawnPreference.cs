@@ -1,12 +1,9 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using CommandSystem;
-using InventorySystem.Items.ToggleableLights.Flashlight;
 using LabApi.Features.Permissions;
 using LabApi.Features.Wrappers;
 using PlayerRoles;
-using PlayerRoles.RoleAssign;
 
 namespace FairScpSelection.Commands;
 

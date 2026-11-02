@@ -2,9 +2,7 @@ using System;
 using System.Linq;
 using CommandSystem;
 using LabApi.Features.Permissions;
-using LabApi.Features.Wrappers;
 using PlayerRoles;
-using PlayerRoles.RoleAssign;
 
 namespace FairScpSelection.Commands;
 
@@ -14,7 +12,7 @@ public class PredictSpawnRoles : ICommand, IUsageProvider
     public string Command => "predictspawnroles";
     public string[] Aliases => Array.Empty<string>();
     public string Description => "It literally does what it says";
-    public string[] Usage => new string[] { "Count" };
+    public string[] Usage => new string[] { "(Count)" };
     private string RequiredPermission => "fss." + Command;
     
     public bool Execute(ArraySegment<string> arguments, ICommandSender sender, out string response)
@@ -36,17 +34,22 @@ public class PredictSpawnRoles : ICommand, IUsageProvider
             response = "TicketLoader is null or not ready";
             return false;
         }
-        
-        if (arguments.Count < 1)
-        {
-            response = "Not enough arguments\n" + this.DisplayCommandUsage();
-            return false;
-        }
 
-        if (!int.TryParse(arguments.At(0), out var targetRolesNumber) || targetRolesNumber <= 0)
+        var targetRolesNumber = 0;
+        
+        if (arguments.Count > 1)
         {
-            response = "Invalid argument (must be an integer greater than 0)";
-            return false;
+            if (!int.TryParse(arguments.At(0), out targetRolesNumber) || targetRolesNumber <= 0)
+            {
+                response = "Invalid argument (must be an integer greater than 0)";
+                return false;
+            }
+        }
+        else
+        {
+            var playersCount = Extensions.GetPlayersCount();
+            
+            targetRolesNumber = Extensions.GetTargetRolesNumber(playersCount);
         }
         
         var ticketsEntries = Core.Singleton.TicketLoader.TicketsEntries;
