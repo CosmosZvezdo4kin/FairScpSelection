@@ -93,8 +93,8 @@
         <Reference Include="YamlDotNet, Version=11.0.0.0, Culture=neutral, PublicKeyToken=ec19458f3c15af5e, processorArchitecture=MSIL">
           <HintPath>packages\YamlDotNet.11.0.1\lib\net45\YamlDotNet.dll</HintPath>
         </Reference>
-        <Reference Include="Yassa.LabApi">
-          <HintPath>$(EXILED_REFERENCES)\Yassa.LabApi.dll</HintPath>
+        <Reference Include="Yassa.LabApi, Version=1.2.0.0, Culture=neutral, processorArchitecture=Amd64">
+          <HintPath>packages\Yassa.LabApi.1.2.0\lib\net48\Yassa.LabApi.dll</HintPath>
         </Reference>
     </ItemGroup>
     <ItemGroup>
