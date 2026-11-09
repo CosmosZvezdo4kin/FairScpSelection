@@ -8,5 +8,5 @@ public class SpawnRestrictions
     public bool PreventAiLoneliness { get; set; } = true;
     public bool PreventShyGuyLoneliness { get; set; } = true;
     public bool PreventWorstDuo { get; set; } = true;
-    public bool Scp3114HolidaysOnly { get; set; } = true;
+    public bool RespectRolesPreferences { get; set; } = true;
 }

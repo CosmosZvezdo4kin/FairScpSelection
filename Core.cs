@@ -46,7 +46,7 @@ public class Core : Plugin
     internal int TargetRolesNumber { get; set; } = -1;
     internal bool ShouldModifyTickets { get; set; } = true;
     internal bool ShouldOrderListByTickets { get; set; } = true;
-    internal bool AllowScpOverflow { get; set; } = false;
+    internal bool AllowScpOverflow { get; set; }
     
     private readonly Dictionary<string, int> _reservedScpTickets = new();
     private readonly Dictionary<Player, RoleTypeId> _predictedRoles = new();
@@ -55,6 +55,7 @@ public class Core : Plugin
     private bool _hasValidConfigs;
     private bool _hasValidTranslation;
     private CoroutineHandle _ticketsCoroutine;
+    private CoroutineHandle _reservedTicketsCoroutine;
     private CoroutineHandle _lobbyUiCoroutine;
     private Harmony _harmony;
     
@@ -88,12 +89,10 @@ public class Core : Plugin
         AllowScpOverflow = ConfigFile.ServerConfig.GetBool("allow_scp_overflow", false);
         
 #if YASSA
-        OptionNode ??= GetOptionNode();
-        OptionsService.Register(OptionNode);
+        RegisterOptionNode();
 #endif
         
         ResetRoleLimitations();
-
         RegisterEvents();
         
         Singleton = this;
@@ -105,8 +104,7 @@ public class Core : Plugin
         UnregisterEvents();
 
 #if YASSA
-        OptionsService.Unregister(OptionNode);
-        OptionNode = null;
+        UnregisterOptionNode();
 #endif
         
         Dispose();
@@ -124,6 +122,11 @@ public class Core : Plugin
         
         _hasValidConfigs = this.TryLoadConfig("config.yml", out Config);
         _hasValidTranslation = this.TryLoadConfig("translation.yml", out Translation);
+
+#if YASSA
+        if (_hasValidConfigs && Config != null && Config.YassaFeatures.RolesPreferenceSliders.Remove(RoleTypeId.Destroyed))
+            Logger.Warn("\"Destroyed\" is reserved for roles that cannot be spawned (do not use it in the roles_preference_sliders config)");
+#endif
     }
     
     private void Dispose()
@@ -149,6 +152,9 @@ public class Core : Plugin
 
         if (_ticketsCoroutine.IsRunning)
             Timing.KillCoroutines(_ticketsCoroutine);
+
+        if (_reservedTicketsCoroutine.IsRunning)
+            Timing.KillCoroutines(_reservedTicketsCoroutine);
         
         if (_lobbyUiCoroutine.IsRunning)
             Timing.KillCoroutines(_lobbyUiCoroutine);
@@ -211,11 +217,7 @@ public class Core : Plugin
     private void OnWaitingForPlayers()
     {
         if (Config.ReservedScpTickets.IsEnabled)
-        {
             ReadReservedScpTicketsFile();
-        
-            WriteReservedScpTicketsFile(string.Empty);
-        }
         
         if (!_ticketsCoroutine.IsRunning)
             _ticketsCoroutine = Timing.RunCoroutine(GiveTickets());
@@ -238,22 +240,47 @@ public class Core : Plugin
     #region YASSA INTEGRATION
     #if YASSA
 
-    private OptionNode GetOptionNode()
+    private void RegisterOptionNode()
     {
-        var optionNode = new OptionNodeBuilder()
-            .SetHeader("FairScpSelection")
-            .SetHint("Client settings for FairScpSelection plugin")
-            .AddTwoButtonsOption(o => o
-                .SetCustomId(SharedConstants.RandomizeScpPreferencesToggle)
-                .SetLabel("Randomize Spawn Preferences")
-                .SetHint("")
-                .SetFirstOption("Enable")
-                .SetSecondOption("Disable")
-                .SetIsSecondDefault(true)
-                .OnValueReceived(OnValueReceived))
-            .Build();
+        var optionNodeBuilder = new OptionNodeBuilder()
+            .SetHeader(Translation.YassaFeatures.HeaderSettingName)
+            .SetHint(Translation.YassaFeatures.HeaderSettingHint);
 
-        return optionNode;
+        if (Config.YassaFeatures.IsRandomizeButtonEnabled)
+            optionNodeBuilder.AddTwoButtonsOption(o => o
+                .SetCustomId(SharedConstants.RandomizeRolesPreferencesToggle)
+                .SetLabel(Translation.YassaFeatures.RandomizeRolesPreferencesSettingName)
+                .SetHint(Translation.YassaFeatures.RandomizeRolesPreferencesSettingHint)
+                .SetFirstOption(Translation.YassaFeatures.EnabledOptionName)
+                .SetSecondOption(Translation.YassaFeatures.DisabledOptionName)
+                .SetIsSecondDefault(true)
+                .OnValueReceived(OnValueReceived));
+
+        foreach (var roleTypeId in Config.YassaFeatures.RolesPreferenceSliders.OrderByDescending(x => x.GetTeam()))
+        {
+            optionNodeBuilder.AddSliderOption(o => o
+                .SetCustomId(SharedConstants.RolePreferenceSlider + roleTypeId)
+                .SetLabel(string.Format(Translation.YassaFeatures.RolePreferenceSliderName, Extensions.GetRoleTranslation(roleTypeId)))
+                .SetHint(string.Format(Translation.YassaFeatures.RolePreferenceSliderHint, Extensions.GetRoleTranslation(roleTypeId)))
+                .SetMinValue(0)
+                .SetMaxValue(10)
+                .SetDefaultValue(0)
+                .SetIsInteger(true)
+                .OnValueReceived(OnValueReceived));
+        }
+        
+        OptionNode = optionNodeBuilder.Build();
+        
+        if (OptionNode.Options.Count > 0) 
+            OptionsService.Register(OptionNode);
+    }
+
+    private void UnregisterOptionNode()
+    {
+        if (OptionNode != null && OptionNode.Options.Count > 0)
+            OptionsService.Unregister(OptionNode);
+        
+        OptionNode = null;
     }
     
     private void OnValueReceived(Player player, IOption option)
@@ -266,16 +293,14 @@ public class Core : Plugin
         
         ReceivedSettings[player.PlayerId].Add(option.Id);
 
-        if (option.CustomId == SharedConstants.RandomizeScpPreferencesToggle && ServerSpecificSettingsSync.TryGetSettingOfUser(player.ReferenceHub, option.Id, out SSTwoButtonsSetting twoButtonsSetting))
+        if (option.CustomId == SharedConstants.RandomizeRolesPreferencesToggle && ServerSpecificSettingsSync.TryGetSettingOfUser(player.ReferenceHub, option.Id, out SSTwoButtonsSetting twoButtonsSetting))
         {
             if (twoButtonsSetting.SyncIsA)
             {
-                if (RandomRole.TryGetValue(player.PlayerId, out var previousRandomPriorityScp))
-                    RandomRole[player.PlayerId] = Enum.GetValues(typeof(RoleTypeId)).ToArray<RoleTypeId>().Where(x => x.CanSpawn() && x != previousRandomPriorityScp).GetRandomElement();
+                if (RandomRole.TryGetValue(player.PlayerId, out var previousRandomRole))
+                    RandomRole[player.PlayerId] = RoleLimitations.Select(x => x.Key).Where(x => x.CanSpawn() && x != previousRandomRole).GetRandomElement();
                 else
-                    RandomRole[player.PlayerId] = Enum.GetValues(typeof(RoleTypeId)).ToArray<RoleTypeId>().Where(x => x.CanSpawn()).GetRandomElement();
-            
-                Logger.Info($"Random role is {RandomRole[player.PlayerId]}");
+                    RandomRole[player.PlayerId] = RoleLimitations.Select(x => x.Key).Where(x => x.CanSpawn()).GetRandomElement();
             }
             else
                 RandomRole.Remove(player.PlayerId);
@@ -289,14 +314,20 @@ public class Core : Plugin
     
     internal void WriteReservedScpTicketsFile(string content)
     {
-        File.WriteAllText(ReservedScpTicketsPath, content);
+        if (!Config.ReservedScpTickets.IsEnabled)
+            return;
+        
+        if (_reservedTicketsCoroutine.IsRunning)
+            Timing.KillCoroutines(_reservedTicketsCoroutine);
+        
+        _reservedTicketsCoroutine = Timing.RunCoroutine(SaveReservedTickets(content));
     }
     
     private void ReadReservedScpTicketsFile()
     {
         if (!File.Exists(ReservedScpTicketsPath))
         {
-            WriteReservedScpTicketsFile(string.Empty);
+            File.WriteAllText(ReservedScpTicketsPath, string.Empty);
             return;
         }
 
@@ -316,6 +347,8 @@ public class Core : Plugin
             
             _reservedScpTickets[userId] = tickets;
         }
+        
+        File.WriteAllText(ReservedScpTicketsPath, string.Empty);
     }
     
     #endregion
@@ -329,28 +362,28 @@ public class Core : Plugin
         if (TicketLoader.TicketsEntries.TryGetValue(player.UserId, out var ticketsEntry))
             tickets = ticketsEntry.Tickets.ToString();
         
-        var predictedRole = _predictedRoles.TryGetValue(player, out var role) ? role : RoleTypeId.Destroyed;
+        var hasPredictedRole = _predictedRoles.TryGetValue(player, out var predictedRole);
         
         var bufferTeammates = new Dictionary<RoleTypeId, int>();
         
-        var predictedResult = string.Empty;
+        string predictedResult;
         var predictedTeammates = Translation.LobbyUiNoData;
 
         var canSeeTeammates = Config.LobbyInterface.ShowRolesTeammatesWhitelist.Contains(predictedRole) ||
                               Config.LobbyInterface.ShowTeamTeammatesWhitelist.Contains(predictedRole.GetTeam()) ||
                               Config.LobbyInterface.ShowFactionTeammatesWhitelist.Contains(predictedRole.GetFaction());
 
-        if (predictedRole == RoleTypeId.Destroyed)
+        if (!hasPredictedRole)
         {
-            predictedResult = Translation.LobbyUiOtherRole;
+            predictedResult = Translation.LobbyUiNoPredictedRole;
         }
         else if (!predictedRole.IsAlive())
         {
-            predictedResult = Translation.LobbyUiUnavailableRole;
+            predictedResult = Extensions.GetRoleTranslation(predictedRole);
         }
-        else if (predictedRole.IsAlive())
+        else
         {
-            predictedResult = predictedRole.ToString();
+            predictedResult = Extensions.GetRoleTranslation(predictedRole);
             
             if (canSeeTeammates && _predictedRoles.Count(kvp => kvp.Value.IsAlive()) > 1)
             {
@@ -362,7 +395,7 @@ public class Core : Plugin
                     bufferTeammates[roleType]++;
                 }
                 
-                predictedTeammates = string.Join(", ", bufferTeammates.Select(kvp => $"{kvp.Key} {(kvp.Value > 1 ? $"(x{kvp.Value})" : string.Empty)}"));
+                predictedTeammates = string.Join(", ", bufferTeammates.Select(kvp => $"{Extensions.GetRoleTranslation(kvp.Key)} {(kvp.Value > 1 ? $"(x{kvp.Value})" : string.Empty)}"));
             }
         }
         
@@ -382,6 +415,8 @@ public class Core : Plugin
         var ticketsPerRound = Mathf.Clamp(Config.TicketsPerRound, 0, int.MaxValue);
         var minTickets = Mathf.Clamp(Config.MinTickets, 0, int.MaxValue);
         var maxTickets = Mathf.Clamp(Config.MaxTickets, 0, int.MaxValue);
+        
+        var maxRoundDuration = Mathf.Clamp(Config.TicketsDistribution.MaxRoundDuration, 0, float.MaxValue);
         
         while (RoundSummary.singleton == null)
             yield return Timing.WaitForOneFrame;
@@ -407,6 +442,9 @@ public class Core : Plugin
         RoundIsInProgress:
         while (Round.IsRoundInProgress)
         {
+            if (maxRoundDuration > 0 && Round.Duration.TotalSeconds > maxRoundDuration)
+                yield break;
+            
             if (TicketLoader == null || !TicketLoader.IsReady || TicketLoader.IsBusy || !ShouldModifyTickets)
             {
                 yield return Timing.WaitForOneFrame;
@@ -414,6 +452,23 @@ public class Core : Plugin
             }
             
             var hasChanges = false;
+
+            foreach (var userId in new HashSet<string>(ResetTickets))
+            {
+                ResetTickets.Remove(userId);
+                
+                var prevTickets = 0;
+                
+                if (TicketLoader.TicketsEntries.TryGetValue(userId, out var ticketEntry))
+                    prevTickets = ticketEntry.Tickets;
+                
+                TicketLoader.ModifyTickets(userId, minTickets);
+                
+                hasChanges = true;
+                
+                if (Player.TryGet(userId, out var player) && !player.IsDestroyed && player.IsReady && player.IsPlayer)
+                    player.SendConsoleMessage($"[FairScpSelection]\nThe number of your SCP tickets has been changed ({prevTickets} -> {minTickets})", "white");
+            }
                 
             foreach (var player in Player.List.Where(x => !x.IsDestroyed && x.IsReady && !x.IsHost && (x.IsPlayer || Config.DummyMode)))
             {
@@ -423,22 +478,11 @@ public class Core : Plugin
                 var tickets = minTickets;
                 
                 if (TicketLoader.TicketsEntries.TryGetValue(player.UserId, out var ticketEntry))
-                    tickets = ticketEntry.Tickets;
+                    tickets = Mathf.Min(ticketEntry.Tickets, minTickets);
                 
                 var prevTickets = tickets;
-
-                if (ResetTickets.Remove(player.UserId) || tickets < minTickets)
-                {
-                    tickets = minTickets;
-                } 
-                else if (tickets > maxTickets)
-                {
-                    tickets = maxTickets;
-                }
-                else
-                {
-                    tickets += ticketsPerRound;
-                }
+                
+                tickets = tickets > maxTickets ? maxTickets : Mathf.Max(tickets + ticketsPerRound, maxTickets);
 
                 TicketLoader.ModifyTickets(player.UserId, tickets);
                 
@@ -458,6 +502,16 @@ public class Core : Plugin
         
         goto RoundIsInProgress;
     }
+
+    private IEnumerator<float> SaveReservedTickets(string content)
+    {
+        while (RoundSummary.singleton == null || !ShouldModifyTickets)
+            yield return Timing.WaitForOneFrame;
+        
+        Logger.Debug("Saving ReservedScpTickets.txt ...", Config.Debug);
+        
+        File.WriteAllText(ReservedScpTicketsPath, content);
+    }
     
     private IEnumerator<float> RunLobbyUi()
     {
@@ -469,20 +523,14 @@ public class Core : Plugin
 
         while (!Round.IsRoundStarted)
         {
-            if (TicketLoader == null || !TicketLoader.IsReady || TicketLoader.IsBusy)
-            {
-                yield return Timing.WaitForOneFrame;
-                continue;
-            }
-            
             _predictedRoles.Clear();
             _spawnReasons.Clear();
 
             var playersCount = Extensions.GetPlayersCount();
 
-            var targetScpNumber = Extensions.GetTargetRolesNumber(playersCount);
+            var targetRolesNumber = Extensions.GetTargetRolesNumber(playersCount);
             
-            var predictedRoles = Extensions.PredictSpawnRoles(TicketLoader.TicketsEntries, targetScpNumber, out var spawnReason);
+            var predictedRoles = Extensions.PredictSpawnRoles(TicketLoader.TicketsEntries, targetRolesNumber, out var spawnReason);
                 
             foreach (var kvp in predictedRoles)
                 _predictedRoles[kvp.Key] = kvp.Value;

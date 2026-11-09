@@ -4,11 +4,12 @@ using FairScpSelection.Structures;
 using GameCore;
 using LabApi.Features.Extensions;
 using LabApi.Features.Wrappers;
-using MapGeneration.Holidays;
 using PlayerRoles;
-using PlayerRoles.PlayableScps.Scp3114;
+using PlayerRoles.PlayableScps;
 using PlayerRoles.RoleAssign;
 using UnityEngine;
+using UserSettings.ServerSpecific;
+using Yassa.LabApi.Features;
 
 namespace FairScpSelection;
 
@@ -47,7 +48,7 @@ public static class Extensions
         var predictedRoles = new Dictionary<Player, RoleTypeId>();
         spawnReason = new Dictionary<Player, string>();
 
-        if (Core.Singleton == null)
+        if (Core.Singleton == null || Core.Singleton.TicketLoader == null || !Core.Singleton.TicketLoader.IsReady || Core.Singleton.TicketLoader.IsBusy)
             return predictedRoles;
         
         var minTickets = Mathf.Clamp(Core.Singleton.Config.MinTickets, 0, int.MaxValue);
@@ -69,6 +70,8 @@ public static class Extensions
             }
 
 #if YASSA
+            // you do not want there to be insufficient information regarding preferences, would you?
+            
             var receivedSettings = player.GetReceivedSettings();
 
             if (player.IsPlayer && receivedSettings.Count < GetRegisteredOptionsCount())
@@ -107,31 +110,14 @@ public static class Extensions
 
                 var spawnPreferences = player.GetSpawnPreferences();
                 
-                var preferences = spawnPreferences.Preferences
-                    .Select(p => new KeyValuePair<RoleTypeId, int>(
-                        p.Key,
-                        p.Key.CanSpawn() && Core.Singleton.RoleLimitations.TryGetValue(p.Key, out var limit) && limit > 0 ? p.Value + 5 : 0))
-                    .Concat(
-                        Core.Singleton.RoleLimitations
-                            .Where(kvp => kvp.Key.CanSpawn() && kvp.Value > 0)
-                            .Select(kvp => kvp.Key)
-                            .Except(spawnPreferences.Preferences.Select(p => p.Key))
-                            .Select(key => new KeyValuePair<RoleTypeId, int>(key, 0)))
-                    .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-                
-#if YASSA
-                if (Core.Singleton.RandomRole.TryGetValue(player.PlayerId, out var randomRole))
-                    preferences = preferences
-                        .Select(p => new KeyValuePair<RoleTypeId, int>(p.Key, p.Key == randomRole ? 10 : 0))
-                        .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-#endif
+                // if dummy_mode is true then Dummies won't be opted out
                 
                 if (player.IsPlayer && iteration == 0 && ScpPlayerPicker.IsOptedOutOfScp(player.ReferenceHub))
                     continue;
                 
-                var allPreferencesBelowMid = preferences.All(x => x.Value < 5);
+                var allPreferencesBelowMid = spawnPreferences.All(x => x.Value < 5);
                 
-                foreach (var kvp in preferences.OrderByDescending(x => x.Value))
+                foreach (var kvp in spawnPreferences.OrderByDescending(x => x.Value))
                 {
                     var roleType = kvp.Key;
                     var preferenceValue = kvp.Value;
@@ -141,6 +127,8 @@ public static class Extensions
                 
                     if (!roleLimitations.TryGetValue(roleType, out var limitNumber) || limitNumber <= 0)
                         continue;
+                    
+                    // for those players who don’t like playing specific roles
                     
                     if (!allPreferencesBelowMid && preferenceValue < 5 && iteration == 0)
                         continue;
@@ -160,6 +148,15 @@ public static class Extensions
 
         return predictedRoles;
     }
+    
+    public static string GetRoleTranslation(RoleTypeId roleTypeId)
+    {
+        if (Core.Singleton == null)
+            return roleTypeId.ToString();
+        
+        return Core.Singleton.Translation.RolesTranslation.TryGetValue(roleTypeId, out var translation) ? translation : roleTypeId.ToString();
+    }
+    
     public static bool CanSpawn(this RoleTypeId roleTypeId)
     {
         if (Core.Singleton == null)
@@ -174,7 +171,7 @@ public static class Extensions
         if (Core.Singleton.Config.SpawnRestrictions.PreventZombies && roleTypeId == RoleTypeId.Scp0492)
             return false;
 
-        if (Core.Singleton.Config.SpawnRestrictions.Scp3114HolidaysOnly && roleTypeId == RoleTypeId.Scp3114 && !Scp3114Role.SupportedHolidays.IsAnyHolidayActive())
+        if (Core.Singleton.Config.SpawnRestrictions.RespectRolesPreferences && !roleTypeId.RespectPreferences())
             return false;
 
         return true;
@@ -208,6 +205,17 @@ public static class Extensions
         return true;
     }
     
+    public static bool RespectPreferences(this RoleTypeId roleTypeId)
+    {
+        foreach (var kvp in PlayerRoleLoader.AllRoles)
+        {
+            if (kvp.Key == roleTypeId && kvp.Value is ISpawnableScp spawnableScp)
+                return spawnableScp.RespectPreferences;
+        }
+        
+        return false;
+    }
+    
     public static bool HasSpawnPreferences(this Player player)
     {
         if (Core.Singleton == null)
@@ -225,9 +233,63 @@ public static class Extensions
         return ScpSpawnPreferences.Preferences.ContainsKey(player.Connection.connectionId);
     }
 
-    public static ScpSpawnPreferences.SpawnPreferences GetSpawnPreferences(this Player player)
+    public static Dictionary<RoleTypeId, int> GetSpawnPreferences(this Player player)
     {
-        return !player.HasSpawnPreferences() ? default : ScpSpawnPreferences.Preferences[player.Connection.connectionId];
+        var spawnPreferences = new Dictionary<RoleTypeId, int>();
+
+        if (!player.HasSpawnPreferences())
+            return spawnPreferences;
+
+        var vanillaSpawnPreferences = ScpSpawnPreferences.Preferences[player.Connection.connectionId].Preferences;
+
+        spawnPreferences = vanillaSpawnPreferences
+            .Select(p => new KeyValuePair<RoleTypeId, int>(
+                p.Key,
+                p.Key.CanSpawn() && Core.Singleton.RoleLimitations.TryGetValue(p.Key, out var limit) && limit > 0
+                    ? p.Value + 5
+                    : 0))
+            .Concat(
+                Core.Singleton.RoleLimitations
+                    .Where(kvp => kvp.Key.CanSpawn() && kvp.Value > 0)
+                    .Select(kvp => kvp.Key)
+                    .Except(vanillaSpawnPreferences.Select(p => p.Key))
+                    .Select(key => new KeyValuePair<RoleTypeId, int>(key, 0)))
+            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+
+#if YASSA
+        var customSpawnPreferences = new Dictionary<RoleTypeId, int>();
+        
+        var receivedSettings = player.GetReceivedSettings();
+
+        if (receivedSettings.Count >= GetRegisteredOptionsCount())
+        {
+            foreach (var roleTypeId in Core.Singleton.Config.YassaFeatures.RolesPreferenceSliders)
+            {
+                if (!roleTypeId.CanSpawn() || !Core.Singleton.RoleLimitations.TryGetValue(roleTypeId, out var limit) || limit < 1)
+                    continue;
+            
+                if (!OptionIdentifiersRegistry.TryGet(SharedConstants.RolePreferenceSlider + roleTypeId, out var sliderId))
+                    continue;
+            
+                if (!ServerSpecificSettingsSync.TryGetSettingOfUser(player.ReferenceHub, sliderId, out SSSliderSetting sliderSetting))
+                    continue;
+            
+                customSpawnPreferences[roleTypeId] = sliderSetting.SyncIntValue;
+            }
+            
+            // if a game has its own preference slider, its value will take precedence over a custom slider
+            
+            foreach (var kvp in customSpawnPreferences.Where(kvp => !kvp.Key.RespectPreferences() || !vanillaSpawnPreferences.ContainsKey(kvp.Key)))
+                spawnPreferences[kvp.Key] = kvp.Value;
+                
+            if (Core.Singleton.RandomRole.TryGetValue(player.PlayerId, out var randomRole))
+                spawnPreferences = spawnPreferences
+                    .Select(p => new KeyValuePair<RoleTypeId, int>(p.Key, p.Key == randomRole ? 10 : 0))
+                    .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        }
+#endif
+        
+        return spawnPreferences;
     }
     
 #if YASSA

@@ -69,23 +69,16 @@ public class SpawnScps
                 tickets = ticketEntry.Tickets;
             
             spawnResult += $"- [{player.PlayerId}] / {roleType} / {tickets} / {spawnReason[player]}\n";
-            
-            if (Core.Singleton.ShouldModifyTickets)
-                reservedScpTicketsContent += $"{player.UserId};{tickets}\n";
+            reservedScpTicketsContent += $"{player.UserId};{tickets}\n";
 
             Core.Singleton.ResetTickets.Add(player.UserId);
             
             player.SetRole(roleType, RoleChangeReason.RoundStart);
             
-            player.SendConsoleMessage($"[FairScpSelection]\nYou were spawned as {roleType}\nReason: {spawnReason[player]}", "white");
+            player.SendConsoleMessage($"[FairScpSelection]\nYou were spawned as {Extensions.GetRoleTranslation(roleType)}\nReason: {spawnReason[player]}", "white");
         }
 
         Logger.Debug(string.IsNullOrEmpty(spawnResult) ? "No spawn results :(" : $"Spawn results:\n{spawnResult}", Core.Singleton.Config.Debug);
-
-        if (!Core.Singleton.Config.ReservedScpTickets.IsEnabled) 
-            return false;
-        
-        Logger.Debug("Saving ReservedScpTickets.txt ...", Core.Singleton.Config.Debug);
             
         Core.Singleton.WriteReservedScpTicketsFile(reservedScpTicketsContent);
 

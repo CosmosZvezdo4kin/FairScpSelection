@@ -18,6 +18,10 @@ public class Config
     public LobbyInterface LobbyInterface { get; set; } = new();
     public ReservedScpTickets ReservedScpTickets { get; set; } = new();
     public SpawnRestrictions SpawnRestrictions { get; set; } = new();
+    public TicketsDistribution TicketsDistribution { get; set; } = new();
+#if YASSA
+    public YassaFeatures YassaFeatures { get; set; } = new();
+#endif
     public Dictionary<RoleTypeId, int> RoleLimitations { get; set; } = new()
     {
         { RoleTypeId.Scp049, 1 },
