@@ -61,7 +61,7 @@ public class SpawnPreference : ICommand, IUsageProvider
 
         if (arguments.Count < 3)
         {
-            var preferencesList = spawnPreferences.Select(p => $"{p.Key}: {p.Value + 5}");
+            var preferencesList = spawnPreferences.Select(p => $"{p.Key}: {p.Value}");
             
             response = spawnPreferences.Any() ? $"Current values for role spawn preferences:\n{string.Join("\n", preferencesList)}" : "The current role spawn preference values are empty :(";
             return true;
@@ -79,9 +79,9 @@ public class SpawnPreference : ICommand, IUsageProvider
             return false;
         }
 
-        if (!player.IsPlayer)
+        if (player.IsPlayer)
         {
-            response = "You cant change the preferences of a regular player";
+            response = "You cant change the spawn preferences of a regular player";
             return false;
         }
         

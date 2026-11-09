@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using CommandSystem;
 using LabApi.Features.Permissions;
 using LabApi.Features.Wrappers;
@@ -13,8 +14,9 @@ public class ModifyTickets : ICommand, IUsageProvider
     public string Command => "modifytickets";
     public string[] Aliases => new string[] { "modtickets" };
     public string Description => "Change SCP tickets number for player(-s)";
-    public string[] Usage => new string[] { "PlayerId or PlayerId.PlayerId...", "Count" };
+    public string[] Usage => new string[] { "PlayerId.PlayerId or UserId.UserId ...", "Count" };
     private string RequiredPermission => "fss." + Command;
+    private static string UserIdPattern => @"^(\s+@northwood|\d{18}@discord|\d{17}@steam)$";
     
     public bool Execute(ArraySegment<string> arguments, ICommandSender sender, out string response)
     {
@@ -49,23 +51,29 @@ public class ModifyTickets : ICommand, IUsageProvider
         }
         
         var stringPlayerIds = arguments.At(0).Split('.');
-        var playerList = new HashSet<Player>();
+        var userIdList = new HashSet<string>();
 
         foreach (var stringPlayerId in stringPlayerIds)
         {
-            if (!int.TryParse(stringPlayerId, out var playerId))
+            if (int.TryParse(stringPlayerId, out var playerId))
             {
-                response = $"Valid PlayerId was not provided - {stringPlayerId}\n" + this.DisplayCommandUsage();
-                return false;
-            }
+                if (!Player.TryGet(playerId, out var player) || player.IsDestroyed || !player.IsReady || player.IsHost || (!player.IsPlayer && !Core.Singleton.Config.DummyMode))
+                {
+                    response = $"Player with this PlayerId was not found - {stringPlayerId}\n" + this.DisplayCommandUsage();
+                    return false;
+                }
 
-            if (!Player.TryGet(playerId, out var player) || player.IsDestroyed || !player.IsReady || player.IsHost || (!player.IsPlayer && !Core.Singleton.Config.DummyMode))
+                userIdList.Add(player.UserId);
+            }
+            else if (stringPlayerId == "ID_Dummy" || Regex.IsMatch(stringPlayerId, UserIdPattern))
             {
-                response = $"Player with this PlayerId was not found - {stringPlayerId}\n" + this.DisplayCommandUsage();
+                userIdList.Add(stringPlayerId);
+            }
+            else
+            {
+                response = $"Valid PlayerId/UserId was not provided - {stringPlayerId}\n" + this.DisplayCommandUsage();
                 return false;
             }
-            
-            playerList.Add(player);
         }
         
         var minTickets = Mathf.Clamp(Core.Singleton.Config.MinTickets, 0, int.MaxValue);
@@ -88,20 +96,30 @@ public class ModifyTickets : ICommand, IUsageProvider
             response = $"Incorrect value for the number of SCP tickets (must be no greater than 0 {maxTickets})\n" + this.DisplayCommandUsage();
             return false;
         }
+
+        var modifiedCount = 0;
         
-        foreach (var player in playerList)
+        foreach (var userId in userIdList)
         {
             var prevTickets = 0;
             
-            if (Core.Singleton.TicketLoader.TicketsEntries.TryGetValue(player.UserId, out var ticketEntry))
+            if (Core.Singleton.TicketLoader.TicketsEntries.TryGetValue(userId, out var ticketEntry))
                 prevTickets = ticketEntry.Tickets;
                 
-            Core.Singleton.TicketLoader.ModifyTickets(player.UserId, tickets);
-                
-            player.SendConsoleMessage($"[FairScpSelection]\nThe number of tickets has been changed by an admin command ({prevTickets} -> {tickets})", "white");
+            if (!Core.Singleton.TicketLoader.TryModifyTickets(userId, tickets))
+                continue;
+
+            modifiedCount++;
+            
+            if (Player.TryGet(userId, out var player) && !player.IsDestroyed && player.IsReady && player.IsPlayer)
+                player.SendConsoleMessage($"[FairScpSelection]\nThe number of tickets has been changed by an admin command ({prevTickets} -> {tickets})", "white");
         }
 
-        Core.Singleton.TicketLoader.SaveEntries();
+        if (modifiedCount < 1 || !Core.Singleton.TicketLoader.TrySaveEntries())
+        {
+            response = "An error occurred while attempting to modify SCP tickets (please try again later)";
+            return false;
+        }
 
         response = "SCP tickets have been successfully modified";
         return true;

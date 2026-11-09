@@ -234,7 +234,12 @@ public class Core : Plugin
         if (Config.ReservedScpTickets.MinRoundDuration > 0 && Round.Duration.TotalSeconds < Config.ReservedScpTickets.MinRoundDuration)
             return;
         
-        WriteReservedScpTicketsFile(string.Empty);
+        if (_reservedTicketsCoroutine.IsRunning)
+            Timing.KillCoroutines(_reservedTicketsCoroutine);
+        
+        File.WriteAllText(ReservedScpTicketsPath, string.Empty);
+        
+        Logger.Debug("ReservedScpTickets.txt file has been cleared", Config.Debug);
     }
 
     #region YASSA INTEGRATION
@@ -349,6 +354,8 @@ public class Core : Plugin
         }
         
         File.WriteAllText(ReservedScpTicketsPath, string.Empty);
+        
+        Logger.Debug("ReservedScpTickets.txt file has been cleared", Config.Debug);
     }
     
     #endregion
@@ -429,14 +436,21 @@ public class Core : Plugin
                 continue;
             }
 
-            foreach (var kvp in _reservedScpTickets)
-                TicketLoader.ModifyTickets(kvp.Key, Mathf.Clamp(kvp.Value + ticketsPerRound, minTickets + ticketsPerRound, maxTickets));
+            var restoredCount = 0;
+
+            foreach (var kvp in new Dictionary<string, int>(_reservedScpTickets))
+            {
+                if (!TicketLoader.TryModifyTickets(kvp.Key, Mathf.Clamp(kvp.Value + ticketsPerRound, minTickets + ticketsPerRound, maxTickets)))
+                    continue;
+                
+                restoredCount++;
+                _reservedScpTickets.Remove(kvp.Key);
+            }
+
+            while (!TicketLoader.TrySaveEntries())
+                yield return Timing.WaitForOneFrame;
             
-            TicketLoader.SaveEntries();
-            
-            Logger.Debug($"Restored SCP tickets for {_reservedScpTickets.Count} player(s)", Config.Debug);
-            
-            _reservedScpTickets.Clear();
+            Logger.Debug($"Restored SCP tickets for {restoredCount} player(s)", Config.Debug);
         }
         
         RoundIsInProgress:
@@ -455,14 +469,16 @@ public class Core : Plugin
 
             foreach (var userId in new HashSet<string>(ResetTickets))
             {
-                ResetTickets.Remove(userId);
-                
                 var prevTickets = 0;
                 
                 if (TicketLoader.TicketsEntries.TryGetValue(userId, out var ticketEntry))
                     prevTickets = ticketEntry.Tickets;
                 
-                TicketLoader.ModifyTickets(userId, minTickets);
+                if (!TicketLoader.TryModifyTickets(userId, minTickets))
+                    continue;
+                
+                _modifiedTickets.Add(userId);
+                ResetTickets.Remove(userId);
                 
                 hasChanges = true;
                 
@@ -470,21 +486,21 @@ public class Core : Plugin
                     player.SendConsoleMessage($"[FairScpSelection]\nThe number of your SCP tickets has been changed ({prevTickets} -> {minTickets})", "white");
             }
                 
-            foreach (var player in Player.List.Where(x => !x.IsDestroyed && x.IsReady && !x.IsHost && (x.IsPlayer || Config.DummyMode)))
+            foreach (var player in Player.List.Where(x => !x.IsDestroyed && x.IsReady && !x.IsHost && (x.IsPlayer || Config.DummyMode) && !_modifiedTickets.Contains(x.UserId)))
             {
-                if (!_modifiedTickets.Add(player.UserId))
-                    continue;
-
                 var tickets = minTickets;
                 
                 if (TicketLoader.TicketsEntries.TryGetValue(player.UserId, out var ticketEntry))
-                    tickets = Mathf.Min(ticketEntry.Tickets, minTickets);
+                    tickets = Mathf.Max(ticketEntry.Tickets, minTickets);
                 
                 var prevTickets = tickets;
                 
-                tickets = tickets > maxTickets ? maxTickets : Mathf.Max(tickets + ticketsPerRound, maxTickets);
+                tickets = tickets > maxTickets ? maxTickets : Mathf.Min(tickets + ticketsPerRound, maxTickets);
 
-                TicketLoader.ModifyTickets(player.UserId, tickets);
+                if (!TicketLoader.TryModifyTickets(player.UserId, tickets))
+                    continue;
+
+                _modifiedTickets.Add(player.UserId);
                 
                 hasChanges = true;
                 
@@ -492,7 +508,8 @@ public class Core : Plugin
             }
             
             if (hasChanges)
-                TicketLoader.SaveEntries();
+                while (!TicketLoader.TrySaveEntries())
+                    yield return Timing.WaitForOneFrame;
             
             yield return Timing.WaitForSeconds(10);
         }
@@ -515,6 +532,9 @@ public class Core : Plugin
     
     private IEnumerator<float> RunLobbyUi()
     {
+        if (!Config.LobbyInterface.IsEnabled)
+            yield break;
+        
         var coroutineDelay = Mathf.Clamp(Config.LobbyInterface.CoroutineDelay, 0, float.MaxValue);
         var hintDuration = Mathf.Clamp(Config.LobbyInterface.HintDuration, 0.1f, float.MaxValue);
         

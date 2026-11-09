@@ -64,10 +64,10 @@ public class TicketLoader
         IsReady = true;
     }
 
-    public void ModifyTickets(string userId, int newNumber)
+    public bool TryModifyTickets(string userId, int newNumber)
     {
         if (IsBusy || !IsReady)
-            return;
+            return false;
         
         IsBusy = true;
         
@@ -83,18 +83,22 @@ public class TicketLoader
         TicketsEntries[userId] = ticketEntry;
 
         IsBusy = false;
+
+        return true;
     }
 
-    public void SaveEntries()
+    public bool TrySaveEntries()
     {
         if (IsBusy || !IsReady)
-            return;
+            return false;
         
         IsBusy = true;
         
         FileManager.WriteToFile(TicketsEntries.Select(x => SerializeEntry(x.Value)), FilePath);
         
         IsBusy = false;
+
+        return true;
     }
     
     private static string SerializeEntry(TicketEntry entry)
