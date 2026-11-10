@@ -1,0 +1,41 @@
+# Read config docs at https://github.com/CosmosZvezdo4kin/FairScpSelection
+debug: false
+dummy_mode: false
+include_dummy_in_calculations: false
+lobby_interface:
+  is_enabled: true
+  coroutine_delay: 1
+  hint_duration: 2
+  show_roles_teammates_whitelist: []
+  show_team_teammates_whitelist:
+    - SCPs
+  show_faction_teammates_whitelist: []
+reserved_scp_tickets:
+  is_enabled: true
+  min_round_duration: 60
+spawn_restrictions:
+  is_enabled: true
+  prevent_non_scp: true
+  prevent_zombies: true
+  prevent_ai_loneliness: true
+  prevent_shy_guy_loneliness: true
+  prevent_worst_duo: true
+  respect_roles_preferences: true
+tickets_distribution:
+  min_tickets: 10
+  max_tickets: 32
+  tickets_per_round: 2
+  max_storage_time: 1296000
+  max_round_duration: 0
+yassa_features:
+  is_randomize_button_enabled: true
+  roles_preference_sliders:
+    - Scp3114
+role_limitations:
+  Scp049: 1
+  Scp079: 1
+  Scp096: 1
+  Scp106: 1
+  Scp173: 1
+  Scp939: 1
+  Scp3114: 1

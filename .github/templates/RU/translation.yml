@@ -1,0 +1,17 @@
+unavailable_role_spawn_reason: 'Недоступная роль'
+high_preference_spawn_reason: 'Высокие предпочтения ({0})'
+not_enough_players_spawn_reason: 'Недостаточно игроков ({0})'
+lobby_ui_no_data: ???
+lobby_ui_no_predicted_role: 'Человек'
+lobby_ui_hint_text: "<size=0>.</size><br><br><br><br><br><br><br><br><br><br><align=center><size=26><b><i><color=#e6ff00>\U0001F3AB</color> <color=#E05431>SCP Тикеты: {ScpTickets}</color><br><color=#1c3c52>\U0001F3AD</color> <color=#76bf39>Вы появитесь как: {PredictedRole}<br><size=20><color=#588f2b>{SpawnReason}</color></size><br><color=#379bbf>\U0001F41B</color> <color=#bfad39>Роли союзников: {PredictedTeammates}</b></i></size></align>"
+roles_translation:
+  Destroyed: 'Никто'
+yassa_features:
+  header_setting_name: 'Честный подбор SCP'
+  header_setting_hint: 'Клиентские настройки для плагина FairScpSelection'
+  randomize_roles_preferences_setting_name: 'Рандомизация предпочтений спавна'
+  randomize_roles_preferences_setting_hint: 'Позволяет включить или отключить случайную настройку всех предпочтений спавна (одна случайная роль будет иметь макс. значение предпочтений)'
+  enabled_option_name: 'Включить'
+  disabled_option_name: 'Отключить'
+  role_preference_slider_name: '{0} предпочтения'
+  role_preference_slider_hint: ''

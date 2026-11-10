@@ -1,0 +1,17 @@
+unavailable_role_spawn_reason: Unavailable role
+high_preference_spawn_reason: High preference ({0})
+not_enough_players_spawn_reason: Not enough players ({0})
+lobby_ui_no_data: ???
+lobby_ui_no_predicted_role: Human
+lobby_ui_hint_text: "<size=0>.</size><br><br><br><br><br><br><br><br><br><br><align=center><size=26><b><i><color=#e6ff00>\U0001F3AB</color> <color=#E05431>SCP Tickets: {ScpTickets}</color><br><color=#1c3c52>\U0001F3AD</color> <color=#76bf39>You will spawn as: {PredictedRole}<br><size=20><color=#588f2b>{SpawnReason}</color></size><br><color=#379bbf>\U0001F41B</color> <color=#bfad39>Teammates roles: {PredictedTeammates}</b></i></size></align>"
+roles_translation:
+  Destroyed: Mr. Nobody
+yassa_features:
+  header_setting_name: Fair Scp Selection
+  header_setting_hint: Client settings for FairScpSelection plugin
+  randomize_roles_preferences_setting_name: Randomize Roles Preferences
+  randomize_roles_preferences_setting_hint: Allows you to enable or disable the randomization of all spawn preferences (one random role will be set to the maximum preference value)
+  enabled_option_name: Enabled
+  disabled_option_name: Disabled
+  role_preference_slider_name: '{0} reference'
+  role_preference_slider_hint: ''

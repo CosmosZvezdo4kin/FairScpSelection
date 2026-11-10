@@ -7,14 +7,10 @@ namespace FairScpSelection;
 
 public class Config
 {
-    [Description("Read config docs at https://github.com/CosmosZvezdo4kin/FairScpSelectio")]
+    [Description("Read config docs at https://github.com/CosmosZvezdo4kin/FairScpSelection")]
     public bool Debug { get; set; } = false;
     public bool DummyMode { get; set; } = false;
     public bool IncludeDummyInCalculations { get; set; } = false;
-    public int TicketsPerRound { get; set; } = 2;
-    public int MinTickets { get; set; } = 10;
-    public int MaxTickets { get; set; } = 32;
-    public int MaxStorageTime { get; set; } = 1296000;
     public LobbyInterface LobbyInterface { get; set; } = new();
     public ReservedScpTickets ReservedScpTickets { get; set; } = new();
     public SpawnRestrictions SpawnRestrictions { get; set; } = new();

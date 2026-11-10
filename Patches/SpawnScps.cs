@@ -2,6 +2,7 @@ using System.Linq;
 using LabApi.Features.Extensions;
 using PlayerRoles;
 using PlayerRoles.RoleAssign;
+using UnityEngine;
 using Logger = LabApi.Features.Console.Logger;
 
 namespace FairScpSelection.Patches;
@@ -21,6 +22,9 @@ public class SpawnScps
 
         RoleAssigner.ScpOverflowMaxHsMultiplier = 1f;
         RoleAssigner.ScpsOverflowing = false;
+        
+        var minTickets = Mathf.Max(Core.Singleton.Config.TicketsDistribution.MinTickets, 0);
+        var maxTickets = Mathf.Max(Core.Singleton.Config.TicketsDistribution.MaxTickets, 0);
 
         var playersCount = Extensions.GetPlayersCount();
 
@@ -63,10 +67,10 @@ public class SpawnScps
             var player = kvp.Key;
             var roleType = kvp.Value;
 
-            var tickets = 0;
+            var tickets = minTickets;
 
             if (ticketsEntries.TryGetValue(player.UserId, out var ticketEntry))
-                tickets = ticketEntry.Tickets;
+                tickets = Mathf.Clamp(ticketEntry.Tickets, minTickets, maxTickets);
             
             spawnResult += $"- [{player.PlayerId}] / {roleType} / {tickets} / {spawnReason[player]}\n";
             reservedScpTicketsContent += $"{player.UserId};{tickets}\n";

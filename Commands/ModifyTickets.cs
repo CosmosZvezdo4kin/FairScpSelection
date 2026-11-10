@@ -76,8 +76,8 @@ public class ModifyTickets : ICommand, IUsageProvider
             }
         }
         
-        var minTickets = Mathf.Clamp(Core.Singleton.Config.MinTickets, 0, int.MaxValue);
-        var maxTickets = Mathf.Clamp(Core.Singleton.Config.MaxTickets, 0, int.MaxValue);
+        var minTickets = Mathf.Clamp(Core.Singleton.Config.TicketsDistribution.MinTickets, 0, int.MaxValue);
+        var maxTickets = Mathf.Clamp(Core.Singleton.Config.TicketsDistribution.MaxTickets, 0, int.MaxValue);
 
         if (!int.TryParse(arguments.At(1), out var tickets) || tickets < 0)
         {

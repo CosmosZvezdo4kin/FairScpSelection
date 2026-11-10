@@ -32,7 +32,7 @@ public class Core : Plugin
     public override string Name => "FairScpSelection";
     public override string Description => "Reworked SCP selection system that prioritizes player preferences";
     public override string Author => "CosmosZvezdochkin";
-    public override Version Version => new(1, 1, 1);
+    public override Version Version => new(1, 2, 0);
     public override Version RequiredApiVersion => new(LabApiProperties.CompiledVersion);
     
     internal static Core Singleton;
@@ -84,7 +84,7 @@ public class Core : Plugin
         if (!PatchMethods())
             return;
         
-        TicketLoader ??= new TicketLoader(Config.MaxStorageTime);
+        TicketLoader ??= new TicketLoader(Config.TicketsDistribution.MaxStorageTime);
         
         AllowScpOverflow = ConfigFile.ServerConfig.GetBool("allow_scp_overflow", false);
         
@@ -364,10 +364,13 @@ public class Core : Plugin
     
     private string FormatUiText(string input, Player player)
     {
+        var minTickets = Mathf.Max(Config.TicketsDistribution.MinTickets, 0);
+        var maxTickets = Mathf.Max(Config.TicketsDistribution.MaxTickets, 0);
+        
         var tickets = Translation.LobbyUiNoData;
 
         if (TicketLoader.TicketsEntries.TryGetValue(player.UserId, out var ticketsEntry))
-            tickets = ticketsEntry.Tickets.ToString();
+            tickets = Mathf.Clamp(ticketsEntry.Tickets, minTickets, maxTickets).ToString();
         
         var hasPredictedRole = _predictedRoles.TryGetValue(player, out var predictedRole);
         
@@ -419,18 +422,18 @@ public class Core : Plugin
     
     private IEnumerator<float> GiveTickets()
     {
-        var ticketsPerRound = Mathf.Clamp(Config.TicketsPerRound, 0, int.MaxValue);
-        var minTickets = Mathf.Clamp(Config.MinTickets, 0, int.MaxValue);
-        var maxTickets = Mathf.Clamp(Config.MaxTickets, 0, int.MaxValue);
+        var ticketsPerRound = Mathf.Max(Config.TicketsDistribution.TicketsPerRound, 0);
+        var minTickets = Mathf.Max(Config.TicketsDistribution.MinTickets, 0);
+        var maxTickets = Mathf.Max(Config.TicketsDistribution.MaxTickets, 0);
         
-        var maxRoundDuration = Mathf.Clamp(Config.TicketsDistribution.MaxRoundDuration, 0, float.MaxValue);
+        var maxRoundDuration = Mathf.Max(Config.TicketsDistribution.MaxRoundDuration, 0);
         
-        while (RoundSummary.singleton == null)
+        while (RoundSummary.singleton == null || TicketLoader == null || !TicketLoader.IsReady)
             yield return Timing.WaitForOneFrame;
 
         while (!Round.IsRoundStarted && !Round.IsRoundEnded)
         {
-            if (!_reservedScpTickets.Any() || TicketLoader == null || !TicketLoader.IsReady || TicketLoader.IsBusy)
+            if (!_reservedScpTickets.Any() || TicketLoader.IsBusy)
             {
                 yield return Timing.WaitForOneFrame;
                 continue;
@@ -440,13 +443,18 @@ public class Core : Plugin
 
             foreach (var kvp in new Dictionary<string, int>(_reservedScpTickets))
             {
-                if (!TicketLoader.TryModifyTickets(kvp.Key, Mathf.Clamp(kvp.Value + ticketsPerRound, minTickets + ticketsPerRound, maxTickets)))
+                var tickets = Mathf.Clamp(kvp.Value + ticketsPerRound, minTickets + ticketsPerRound, maxTickets);
+                
+                if (!TicketLoader.TryModifyTickets(kvp.Key, tickets))
                     continue;
                 
                 restoredCount++;
                 _reservedScpTickets.Remove(kvp.Key);
             }
 
+            if (restoredCount < 1)
+                continue;
+            
             while (!TicketLoader.TrySaveEntries())
                 yield return Timing.WaitForOneFrame;
             
@@ -459,7 +467,7 @@ public class Core : Plugin
             if (maxRoundDuration > 0 && Round.Duration.TotalSeconds > maxRoundDuration)
                 yield break;
             
-            if (TicketLoader == null || !TicketLoader.IsReady || TicketLoader.IsBusy || !ShouldModifyTickets)
+            if (TicketLoader.IsBusy || !ShouldModifyTickets)
             {
                 yield return Timing.WaitForOneFrame;
                 continue;
@@ -488,14 +496,12 @@ public class Core : Plugin
                 
             foreach (var player in Player.List.Where(x => !x.IsDestroyed && x.IsReady && !x.IsHost && (x.IsPlayer || Config.DummyMode) && !_modifiedTickets.Contains(x.UserId)))
             {
-                var tickets = minTickets;
+                var prevTickets = minTickets;
                 
                 if (TicketLoader.TicketsEntries.TryGetValue(player.UserId, out var ticketEntry))
-                    tickets = Mathf.Max(ticketEntry.Tickets, minTickets);
+                    prevTickets = Mathf.Max(ticketEntry.Tickets, minTickets);
                 
-                var prevTickets = tickets;
-                
-                tickets = tickets > maxTickets ? maxTickets : Mathf.Min(tickets + ticketsPerRound, maxTickets);
+                var tickets = Mathf.Clamp(prevTickets + ticketsPerRound, minTickets, maxTickets);
 
                 if (!TicketLoader.TryModifyTickets(player.UserId, tickets))
                     continue;
@@ -535,10 +541,10 @@ public class Core : Plugin
         if (!Config.LobbyInterface.IsEnabled)
             yield break;
         
-        var coroutineDelay = Mathf.Clamp(Config.LobbyInterface.CoroutineDelay, 0, float.MaxValue);
-        var hintDuration = Mathf.Clamp(Config.LobbyInterface.HintDuration, 0.1f, float.MaxValue);
+        var coroutineDelay = Mathf.Max(Config.LobbyInterface.CoroutineDelay, 0);
+        var hintDuration = Mathf.Max(Config.LobbyInterface.HintDuration, 0.1f);
         
-        while (RoundSummary.singleton == null)
+        while (RoundSummary.singleton == null || TicketLoader == null || !TicketLoader.IsReady)
             yield return Timing.WaitForOneFrame;
 
         while (!Round.IsRoundStarted)

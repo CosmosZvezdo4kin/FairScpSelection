@@ -48,10 +48,10 @@ public static class Extensions
         var predictedRoles = new Dictionary<Player, RoleTypeId>();
         spawnReason = new Dictionary<Player, string>();
 
-        if (Core.Singleton == null || Core.Singleton.TicketLoader == null || !Core.Singleton.TicketLoader.IsReady || Core.Singleton.TicketLoader.IsBusy)
+        if (Core.Singleton == null || !entries.Any())
             return predictedRoles;
         
-        var minTickets = Mathf.Clamp(Core.Singleton.Config.MinTickets, 0, int.MaxValue);
+        var minTickets = Mathf.Max(Core.Singleton.Config.TicketsDistribution.MinTickets, 0);
         
         var playerTickets = new Dictionary<Player, int>();
         
