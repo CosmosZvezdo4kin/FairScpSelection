@@ -81,6 +81,11 @@ This system is designed to protect the "SCP tickets" of players who spawned as S
 > [!WARNING]
 > Available only in the <b>Yassa edition</b>
 
+Includes various features related to server-specific settings (a "Randomize Roles Preferences" button and sliders for setting spawn preferences for different roles)
+
+<img src="https://github.com/CosmosZvezdo4kin/FairScpSelection/blob/master/.github/img/yassa_features_1.png?raw=true" width="60%">
+<img src="https://github.com/CosmosZvezdo4kin/FairScpSelection/blob/master/.github/img/yassa_features_2.png?raw=true" width="60%">
+
 # FAQ
 
 ### What is this plugin for ?
