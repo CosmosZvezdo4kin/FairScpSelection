@@ -1,8 +1,6 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using CommandSystem;
-using InventorySystem.Items.ToggleableLights.Flashlight;
 using LabApi.Features.Permissions;
 using LabApi.Features.Wrappers;
 using PlayerRoles;
@@ -63,9 +61,9 @@ public class SpawnPreference : ICommand, IUsageProvider
 
         if (arguments.Count < 3)
         {
-            var preferencesList = spawnPreferences.Preferences.Select(p => $"{p.Key}: {p.Value + 5}");
+            var preferencesList = spawnPreferences.Select(p => $"{p.Key}: {p.Value}");
             
-            response = spawnPreferences.Preferences.Any() ? $"Current values for role spawn preferences:\n{string.Join("\n", preferencesList)}" : "The current role spawn preference values are empty :(";
+            response = spawnPreferences.Any() ? $"Current values for role spawn preferences:\n{string.Join("\n", preferencesList)}" : "The current role spawn preference values are empty :(";
             return true;
         }
         
@@ -81,7 +79,15 @@ public class SpawnPreference : ICommand, IUsageProvider
             return false;
         }
 
-        spawnPreferences.Preferences[roleType] = preferenceValue - 5;
+        if (player.IsPlayer)
+        {
+            response = "You cant change the spawn preferences of a regular player";
+            return false;
+        }
+        
+        var vanillaSpawnPreferences = ScpSpawnPreferences.Preferences[player.Connection.connectionId];
+
+        vanillaSpawnPreferences.Preferences[roleType] = preferenceValue - 5;
         
         response = $"Set {player.Nickname} ({player.PlayerId}) spawn preference for {roleType} is <b>{preferenceValue}</b>";
         return true;

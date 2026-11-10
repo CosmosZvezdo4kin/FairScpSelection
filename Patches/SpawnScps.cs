@@ -1,9 +1,8 @@
 using System.Linq;
-using GameCore;
 using LabApi.Features.Extensions;
-using LabApi.Features.Wrappers;
 using PlayerRoles;
 using PlayerRoles.RoleAssign;
+using UnityEngine;
 using Logger = LabApi.Features.Console.Logger;
 
 namespace FairScpSelection.Patches;
@@ -24,19 +23,16 @@ public class SpawnScps
         RoleAssigner.ScpOverflowMaxHsMultiplier = 1f;
         RoleAssigner.ScpsOverflowing = false;
         
-        var teamRespawnQueue = ConfigFile.ServerConfig.GetString("team_respawn_queue", "4014314031441404134041434414");
+        var minTickets = Mathf.Max(Core.Singleton.Config.TicketsDistribution.MinTickets, 0);
+        var maxTickets = Mathf.Max(Core.Singleton.Config.TicketsDistribution.MaxTickets, 0);
 
-        var playersCount =
-            Player.List.Count(x =>
-                !x.IsDestroyed && x.IsReady && RoleAssigner.CheckPlayer(x.ReferenceHub) && (x.HasSpawnPreferences() || (x.IsDummy && Core.Singleton.Config.IncludeDummyInCalculations)));
+        var playersCount = Extensions.GetPlayersCount();
+
+        var targetScpNumber = Extensions.GetTargetRolesNumber(playersCount);
         
-        var targetScpNumber = Enumerable.Range(0, playersCount)
-            .Count(i => teamRespawnQueue[i % teamRespawnQueue.Length] == '0');
-        var scpLimitNumber = Core.Singleton.RoleLimitations
-            .Where(x => x.Key.IsScp() && x.Key.CanSpawn() && x.Value > 0)
-            .Sum(x => x.Value);
+        var scpLimitNumber = Extensions.GetRolesLimitNumber(true);
         
-        Logger.Debug($"Target SCP number is set to {(Core.Singleton.TargetRolesNumber != -1 ? $"{Core.Singleton.TargetRolesNumber} via command" : targetScpNumber)} ...", Core.Singleton.Config.Debug);
+        Logger.Debug($"Target roles number is set to {(Core.Singleton.TargetRolesNumber != -1 ? $"{targetScpNumber} via command" : targetScpNumber)} ...", Core.Singleton.Config.Debug);
         
         var ticketsEntries = Core.Singleton.TicketLoader.TicketsEntries;
         
@@ -71,29 +67,22 @@ public class SpawnScps
             var player = kvp.Key;
             var roleType = kvp.Value;
 
-            var tickets = 0;
+            var tickets = minTickets;
 
             if (ticketsEntries.TryGetValue(player.UserId, out var ticketEntry))
-                tickets = ticketEntry.Tickets;
+                tickets = Mathf.Clamp(ticketEntry.Tickets, minTickets, maxTickets);
             
             spawnResult += $"- [{player.PlayerId}] / {roleType} / {tickets} / {spawnReason[player]}\n";
-            
-            if (Core.Singleton.ShouldModifyTickets)
-                reservedScpTicketsContent += $"{player.UserId};{tickets}\n";
+            reservedScpTicketsContent += $"{player.UserId};{tickets}\n";
 
             Core.Singleton.ResetTickets.Add(player.UserId);
             
             player.SetRole(roleType, RoleChangeReason.RoundStart);
             
-            player.SendConsoleMessage($"[FairScpSelection]\nYou were spawned as {roleType}\nReason: {spawnReason[player]}", "white");
+            player.SendConsoleMessage($"[FairScpSelection]\nYou were spawned as {Extensions.GetRoleTranslation(roleType)}\nReason: {spawnReason[player]}", "white");
         }
 
         Logger.Debug(string.IsNullOrEmpty(spawnResult) ? "No spawn results :(" : $"Spawn results:\n{spawnResult}", Core.Singleton.Config.Debug);
-
-        if (!Core.Singleton.Config.ReservedScpTickets.IsEnabled) 
-            return false;
-        
-        Logger.Debug("Saving ReservedScpTickets.txt ...", Core.Singleton.Config.Debug);
             
         Core.Singleton.WriteReservedScpTicketsFile(reservedScpTicketsContent);
 
